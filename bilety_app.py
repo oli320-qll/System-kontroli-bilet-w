@@ -120,7 +120,6 @@ c.execute("""
     )
 """)
 
-# Tabela cennika biletów w kiosku
 c.execute("""
     CREATE TABLE IF NOT EXISTS cennik (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -131,7 +130,6 @@ c.execute("""
 """)
 conn.commit()
 
-# Domyślne ustawienia i cennik
 c.execute("INSERT OR IGNORE INTO ustawienia (klucz, wartosc) VALUES ('kiosk_zablokowany', 'False')")
 conn.commit()
 
@@ -229,19 +227,32 @@ if not st.session_state["zalogowany"]:
 
 # ================= SPECJALNY TRYB: KIOSK =================
 if st.session_state["rola"] == "Kiosk":
-    # Ekran blokady w stylu terminala rtm (zamiast wyskakującego błędu)
+    # Ekran blokady z dynamicznym zegarem JS odświeżającym się w czasie rzeczywistym
     if czy_kiosk_zablokowany():
-        czas_teraz = datetime.now().strftime("%H:%M:%S | %d-%m-%Y")
-        st.markdown(f"""
+        st.markdown("""
             <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 20px; background-color: #e2e8f0; border-bottom: 2px solid #cbd5e1; color: #0f172a; font-weight: bold;">
                 <div style="font-size: 22px; color: #dc2626;">🚊 KM RTM</div>
-                <div style="font-size: 18px;">{czas_teraz}</div>
+                <div id="live-clock" style="font-size: 18px;">--:--:-- | ---</div>
             </div>
             <div style="text-align: center; padding: 60px 20px; background-color: #edf2f7; min-height: 75vh; display: flex; flex-direction: column; justify-content: center; align-items: center;">
                 <div style="font-size: 110px; color: #dc2626; margin-bottom: 20px; line-height: 1;">🚫</div>
                 <h1 style="color: #0f172a; font-size: 42px; font-weight: 800; letter-spacing: 2px; margin: 0;">KASOWNIK ZABLOKOWANY</h1>
                 <p style="color: #64748b; font-size: 16px; margin-top: 10px;">Urządzenie zostało zablokowane przez obsługę pociągu.</p>
             </div>
+            <script>
+                function updateClock() {
+                    const now = new Date();
+                    const hours = String(now.getHours()).padStart(2, '0');
+                    const minutes = String(now.getMinutes()).padStart(2, '0');
+                    const seconds = String(now.getSeconds()).padStart(2, '0');
+                    const day = String(now.getDate()).padStart(2, '0');
+                    const month = String(now.getMonth() + 1).padStart(2, '0');
+                    const year = now.getFullYear();
+                    document.getElementById('live-clock').innerText = hours + ':' + minutes + ':' + seconds + ' | ' + day + '-' + month + '-' + year;
+                }
+                setInterval(updateClock, 1000);
+                updateClock();
+            </script>
         """, unsafe_allow_html=True)
         
         st.markdown("<br>", unsafe_allow_html=True)
@@ -264,7 +275,6 @@ if st.session_state["rola"] == "Kiosk":
         </div>
     """, unsafe_allow_html=True)
 
-    # Pobieranie aktualnego cennika z bazy danych
     df_cennik = pd.read_sql("SELECT nazwa, cena, opis FROM cennik", conn)
     katalog_biletow = df_cennik.to_dict('records')
 
@@ -361,7 +371,7 @@ if st.session_state["rola"] == "Kiosk":
                         st.rerun()
 
     st.markdown("---")
-    with st.expander("🛠️ Panel serwisowy / Wyjdź z trybu kiosku (Wymaga PIN)"):
+    with st.expander("🛠️️ Panel serwisowy / Wyjdź z trybu kiosku (Wymaga PIN)"):
         pin_wyjscie = st.text_input("Podaj kod PIN serwisowy:", type="password")
         if st.button("Wyloguj kiosk"):
             if pin_wyjscie == "123" or pin_wyjscie == "admin123":
