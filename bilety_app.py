@@ -344,6 +344,7 @@ if st.session_state["rola"] == "Kiosk":
 
         with c_form_pl:
             with st.form("form_platnosc_kiosk"):
+                kod_wlasny_kiosk = st.text_input("Kod / Identyfikator biletu:", value=f"KOSK-{datetime.now().strftime('%H%M%S')}")
                 relacja_kiosk = st.text_input("Stacja docelowa / Relacja:", value="Warszawa Centralna -> Pruszków")
                 metoda_pl = st.radio("Wybierz metodę płatności:", [
                     "💳 Karta płatnicza (Zbliżeniowa)",
@@ -354,28 +355,33 @@ if st.session_state["rola"] == "Kiosk":
                 btn_finalizuj = st.form_submit_button("🖨️ ZAPŁAĆ I DRUKUJ BILET", type="primary")
 
                 if btn_finalizuj:
-                    kod_auto = f"KM-AUTO-{datetime.now().strftime('%H%M%S')}"
-                    waznosc_auto = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d %H:%M")
-                    
-                    c.execute("INSERT INTO bilety (kod_biletu, rodzaj, data_waznosci, status) VALUES (?, ?, ?, ?)",
-                              (kod_auto, f"{st.session_state['kiosk_wybrany_bilet']} | {relacja_kiosk}", waznosc_auto, "Aktywny"))
-                    conn.commit()
+                    kod_finalny = kod_wlasny_kiosk.strip()
+                    if kod_finalny:
+                        waznosc_auto = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d %H:%M")
+                        try:
+                            c.execute("INSERT INTO bilety (kod_biletu, rodzaj, data_waznosci, status) VALUES (?, ?, ?, ?)",
+                                      (kod_finalny, f"{st.session_state['kiosk_wybrany_bilet']} | {relacja_kiosk}", waznosc_auto, "Aktywny"))
+                            conn.commit()
 
-                    st.success("Transakcja zatwierdzona! Bilet został wydany.")
-                    st.markdown(f"""
-                        <div class="mandat-box" style="border-color: #22c55e;">
-                            <h3 style="color: #22c55e; margin-top:0; text-align:center;">BILET KOLEJOWY - WERSJA CYFROWA</h3>
-                            <h4 style="text-align:center; color: #f97316; margin-bottom: 10px;">KOD: {kod_auto}</h4>
-                            <p><b>Oferta:</b> {st.session_state['kiosk_wybrany_bilet']}</p>
-                            <p><b>Relacja:</b> {relacja_kiosk}</p>
-                            <p><b>Ważny do:</b> {waznosc_auto}</p>
-                            <p><b>Zapłacono:</b> {st.session_state['kiosk_cena']:.2f} PLN ({metoda_pl})</p>
-                        </div>
-                    """, unsafe_allow_html=True)
-                    
-                    if st.button("Kup kolejny bilet"):
-                        st.session_state["kiosk_krok"] = "wybor"
-                        st.rerun()
+                            st.success("Transakcja zatwierdzona! Bilet został wydany.")
+                            st.markdown(f"""
+                                <div class="mandat-box" style="border-color: #22c55e;">
+                                    <h3 style="color: #22c55e; margin-top:0; text-align:center;">BILET KOLEJOWY - WERSJA CYFROWA</h3>
+                                    <h4 style="text-align:center; color: #f97316; margin-bottom: 10px;">KOD: {kod_finalny}</h4>
+                                    <p><b>Oferta:</b> {st.session_state['kiosk_wybrany_bilet']}</p>
+                                    <p><b>Relacja:</b> {relacja_kiosk}</p>
+                                    <p><b>Ważny do:</b> {waznosc_auto}</p>
+                                    <p><b>Zapłacono:</b> {st.session_state['kiosk_cena']:.2f} PLN ({metoda_pl})</p>
+                                </div>
+                            """, unsafe_allow_html=True)
+                            
+                            if st.button("Kup kolejny bilet"):
+                                st.session_state["kiosk_krok"] = "wybor"
+                                st.rerun()
+                        except sqlite3.IntegrityError:
+                            st.error(f"Kod biletu '{kod_finalny}' już istnieje w bazie! Podaj inny kod.")
+                    else:
+                        st.error("Podaj prawidłowy kod biletu.")
 
     st.markdown("---")
     with st.expander("🛠 Panel serwisowy / Wyjdź z trybu kiosku (Wymaga PIN)"):
@@ -405,7 +411,7 @@ with st.sidebar:
     st.markdown(f"**Rola:** `{st.session_state['rola']}`")
     st.markdown("---")
     
-    opcje_menu = ["🎫 Bilety", "📋 Zadania", "ℹ️ Informacje", "📊 Raporty", "🔧 Narzędzia"]
+    opcje_menu = ["🎫 Bilety", "📋 Zadania", "ℹ️️ Informacje", "📊 Raporty", "🔧 Narzędzia"]
     if st.session_state["rola"] == "Administrator":
         opcje_menu.append("👥 Użytkownicy")
         opcje_menu.append("🎟️ Baza Biletów (Admin)")
@@ -464,7 +470,7 @@ if wybrane_menu == "🎫 Bilety":
 
         col_skan_1, col_skan_2 = st.columns([4, 1])
         with col_skan_1:
-            kod_wejscie = st.text_input("Zeskanuj kod kreskowy / QR:", key="skaner_input", placeholder="np. KM-AUTO-...")
+            kod_wejscie = st.text_input("Wpisz lub zeskanuj kod biletu:", key="skaner_input", placeholder="np. wpisz dokładnie taki kod, jaki został nadany...")
         with col_skan_2:
             st.markdown("<br>", unsafe_allow_html=True) 
             st.button("❌ Wyczyść", on_click=wyczysc_pole_skanera)
@@ -514,19 +520,23 @@ if wybrane_menu == "🎫 Bilety":
     elif pod_menu == "➕ Nowy bilet (Sprzedaż u konduktora)":
         with st.form("form_sprzedaz"):
             st.write("### Wystawienie biletu w pociągu")
-            trasa = st.text_input("Relacja:")
+            kod_wlasny_konduktor = st.text_input("Wpisz kod biletu:", value=f"KOND-{datetime.now().strftime('%H%M%S')}")
+            trasa = st.text_input("Relacja:", value="Warszawa -> Radom")
             rodzaj_biletu = st.selectbox("Oferta:", ["Bilet jednorazowy normalny", "Bilet jednorazowy ulgowy (50%)", "Bilet taryfowy strefowy"])
             cena_biletu = st.number_input("Należność w zł:", value=15.50, step=0.50)
             
             if st.form_submit_button("Wydrukuj bilet"):
-                if trasa.strip():
-                    kod_nowy = f"KM-SPRZ-{datetime.now().strftime('%H%M%S')}"
-                    dw_nowa = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d %H:%M")
-                    c.execute("INSERT INTO bilety (kod_biletu, rodzaj, data_waznosci, status) VALUES (?, ?, ?, ?)", (kod_nowy, rodzaj_biletu, dw_nowa, "Aktywny"))
-                    conn.commit()
-                    st.success(f"Wystawiono bilet! Kod: **{kod_nowy}**, Kwota: **{cena_biletu} zł**")
+                kod_finalny_k = kod_wlasny_konduktor.strip()
+                if kod_finalny_k and trasa.strip():
+                    try:
+                        dw_nowa = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d %H:%M")
+                        c.execute("INSERT INTO bilety (kod_biletu, rodzaj, data_waznosci, status) VALUES (?, ?, ?, ?)", (kod_finalny_k, f"{rodzaj_biletu} | {trasa}", dw_nowa, "Aktywny"))
+                        conn.commit()
+                        st.success(f"Wystawiono bilet! Kod: **{kod_finalny_k}**, Kwota: **{cena_biletu} zł**")
+                    except sqlite3.IntegrityError:
+                        st.error(f"Kod biletu '{kod_finalny_k}' już istnieje w bazie!")
                 else:
-                    st.error("Podaj relację podróży.")
+                    st.error("Podaj kod biletu oraz relację podróży.")
 
     elif pod_menu == "⚠ Nowe wezwanie (Mandat za brak biletu)":
         st.write("### 🚨 Wystawianie wezwania do zapłaty")
