@@ -3,10 +3,10 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime, timedelta
 
-# Układ szeroki dla terminala konduktorskiego
-st.set_page_config(page_title="Terminal Konduktorski KM", layout="wide")
+# Układ szeroki
+st.set_page_config(page_title="Terminal / Kiosk KM", layout="wide")
 
-# Zaawansowana stylizacja CSS (lewe menu + profesjonalna paleta barw KM)
+# Zaawansowana stylizacja CSS (w tym kafelki dla kiosku dotykowego)
 st.markdown("""
     <style>
     .stApp {
@@ -17,25 +17,6 @@ st.markdown("""
     [data-testid="stSidebar"] {
         background-color: #1e293b;
         border-right: 2px solid #334155;
-    }
-    [data-testid="stSidebar"] .stRadio div[role="radiogroup"] {
-        gap: 8px;
-    }
-    [data-testid="stSidebar"] .stRadio label {
-        background-color: #0f172a;
-        padding: 12px 15px;
-        border-radius: 8px;
-        border: 1px solid #334155;
-        color: #ffffff;
-        font-weight: 600;
-        font-size: 15px;
-        width: 100%;
-        transition: all 0.2s ease-in-out;
-    }
-    [data-testid="stSidebar"] .stRadio label:hover {
-        background-color: #f97316;
-        color: white;
-        border-color: #f97316;
     }
     .terminal-header {
         background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
@@ -75,6 +56,19 @@ st.markdown("""
         padding: 20px;
         border-radius: 8px;
         margin-top: 15px;
+    }
+    /* Styl kafelków biletowych w stylu biletomatów tramwajowych */
+    .biletomat-kafelek {
+        background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+        border: 2px solid #334155;
+        padding: 20px;
+        border-radius: 12px;
+        text-align: center;
+        margin-bottom: 15px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+    }
+    .biletomat-kafelek:hover {
+        border-color: #f97316;
     }
     .stButton>button {
         width: 100%;
@@ -133,19 +127,20 @@ c.execute("""
 """)
 conn.commit()
 
-# Bezpieczna aktualizacja struktury tabeli dla opłat
+# Bezpieczna aktualizacja tabeli
 try:
     c.execute("ALTER TABLE historia_kontroli ADD COLUMN status_oplaty TEXT DEFAULT 'Nieopłacony'")
     conn.commit()
 except sqlite3.OperationalError:
     pass
 
-# Domyślny użytkownik konduktor oraz administrator (jeśli baza jest pusta)
+# Domyślni użytkownicy (w tym kiosk z loginkiem "kiosk" i PIN-em "123")
 c.execute("SELECT COUNT(*) FROM uzytkownicy")
 if c.fetchone()[0] == 0:
     c.executemany("INSERT INTO uzytkownicy (login, haslo, rola, imie) VALUES (?, ?, ?, ?)", [
         ("konduktor", "123", "Kontroler", "Jan Konduktor (ID: 104)"),
-        ("admin", "admin123", "Administrator", "Kierownik Pociągu")
+        ("admin", "admin123", "Administrator", "Kierownik Pociągu"),
+        ("kiosk", "123", "Kiosk", "Automat Biletowy Stacjonarny (Kiosk-01)")
     ])
     conn.commit()
 
@@ -172,18 +167,18 @@ if not st.session_state["zalogowany"]:
     st.markdown("""
         <div class="terminal-header" style="text-align: center; max-width: 450px; margin: 50px auto;">
             <h2 style="color: #f97316; margin:0;">Koleje Mazowieckie</h2>
-            <p style="color: #94a3b8; margin:5px 0 0 0; font-size: 13px;">Terminal Przenośny Konduktora (TPK)</p>
+            <p style="color: #94a3b8; margin:5px 0 0 0; font-size: 13px;">Wybierz terminal / Logowanie</p>
         </div>
     """, unsafe_allow_html=True)
 
     col_l1, col_l2, col_l3 = st.columns([1, 1.2, 1])
     with col_l2:
         with st.form("form_log"):
-            st.write("### Logowanie do urządzenia")
-            l_in = st.text_input("Identyfikator / Login:")
+            st.write("### Autoryzacja urządzenia")
+            l_in = st.text_input("Login / ID urządzenia (np. konduktor, kiosk):")
             h_in = st.text_input("Kod PIN / Hasło:", type="password")
             
-            btn_zaloguj = st.form_submit_button("Zaloguj do pociągu")
+            btn_zaloguj = st.form_submit_button("Uruchom terminal")
             if btn_zaloguj:
                 c.execute("SELECT rola, imie FROM uzytkownicy WHERE login = ? AND haslo = ?", (l_in.strip(), h_in))
                 res = c.fetchone()
@@ -196,12 +191,86 @@ if not st.session_state["zalogowany"]:
                     st.error("Błędny login lub PIN.")
     st.stop()
 
-# ================= MENU BOCZNE (LEWA STRONA) =================
+
+# ================= SPECJALNY TRYB: KIOSK / AUTOMAT BILETOWY =================
+if st.session_state["rola"] == "Kiosk":
+    st.markdown("""
+        <div style="text-align: center; background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); padding: 15px; border-radius: 10px; border-bottom: 4px solid #f97316; margin-bottom: 20px;">
+            <h1 style="color: #f97316; margin:0;">🚊 AUTOMAT BILETOWY KOLEI MAZOWIECKICH</h1>
+            <p style="color: #94a3b8; margin: 5px 0 0 0;">Wybierz bilet dotykając odpowiedniej pozycji. Płatność kartą, BLIK-iem lub gotówką.</p>
+        </div>
+    """, unsafe_allow_html=True)
+
+    # Ekran zakupu w stylu biletomatu miejskiego (krok po kroku)
+    col_k1, col_k2 = st.columns(2)
+    
+    with col_k1:
+        st.markdown("### 1. Wybierz rodzaj biletu i cenę")
+        rodzaj_wybrany = st.radio("Dostępne bilety w automacie:", [
+            "Bilet jednorazowy normalny (15.50 PLN)",
+            "Bilet jednorazowy ulgowy 50% (7.75 PLN)",
+            "Bilet sieciowy dobowy normalny (45.00 PLN)",
+            "Bilet weekendowy KM (39.00 PLN)"
+        ])
+        
+        relacja_kiosk = st.text_input("Stacja docelowa / Strefa:", value="Warszawa Centralna -> Radom")
+
+    with col_k2:
+        st.markdown("### 2. Wybierz metodę płatności")
+        platnosc_kiosk = st.radio("Forma płatności:", [
+            "💳 Karta płatnicza (Zbliżeniowa / Chip)",
+            "📱 Kod BLIK",
+            "💵 Gotówka (Monety / Banknoty)"
+        ])
+        
+        st.markdown("<br>", unsafe_allow_html=True)
+        btn_kup_automat = st.button("🖨️ ZAPŁAĆ I DRUKUJ BILET", type="primary")
+
+    if btn_kup_automat:
+        kod_auto = f"KM-AUTO-{datetime.now().strftime('%H%M%S')}"
+        waznosc_auto = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d %H:%M")
+        
+        # Zapis do głównej bazy biletów
+        c.execute("INSERT INTO bilety (kod_biletu, rodzaj, data_waznosci, status) VALUES (?, ?, ?, ?)",
+                  (kod_auto, f"{rodzaj_wybrany} | {relacja_kiosk}", waznosc_auto, "Aktywny"))
+        conn.commit()
+
+        st.success("Transakcja zatwierdzona pomyślnie! Twój bilet został wydany.")
+        st.markdown(f"""
+            <div class="mandat-box" style="border-color: #22c55e; max-width: 600px; margin: 20px auto;">
+                <h3 style="color: #22c55e; margin-top:0; text-align:center;">POTWIERDZONY BILET KOLEJOWY</h3>
+                <h4 style="text-align:center; color: #f97316; margin-bottom: 15px;">KOD: {kod_auto}</h4>
+                <p><b>Oferta:</b> {rodzaj_wybrany}</p>
+                <p><b>Relacja:</b> {relacja_kiosk}</p>
+                <p><b>Ważny do:</b> {waznosc_auto}</p>
+                <p><b>Opłacono przez:</b> {platnosc_kiosk}</p>
+                <hr style="border-color: #334155;">
+                <p style="font-size: 11px; color: #94a3b8; text-align:center; margin-bottom:0;">Zabierz wydrukowany bilet z podajnika. Życzymy udanej podróży!</p>
+            </div>
+        """, unsafe_allow_html=True)
+
+    st.markdown("---")
+    # Panel administratora/serwisu wbudowany na dole dla kiosku (zabezpieczony kodem PIN)
+    with st.expander("🛠️ Panel serwisowy / Wyjdź z trybu kiosku (Wymaga PIN)"):
+        pin_wyjscie = st.text_input("Podaj kod PIN serwisowy, aby wylogować kiosk:", type="password")
+        if st.button("Wyloguj kiosk / Zmień tryb"):
+            if pin_wyjscie == "123" or pin_wyjscie == "admin123":
+                st.session_state["zalogowany"] = False
+                st.session_state["user"] = ""
+                st.session_state["rola"] = ""
+                st.rerun()
+            else:
+                st.error("Błędny PIN serwisowy!")
+
+    st.stop() # Zatrzymuje dalsze ładowanie kodu konduktorskiego, jeśli zalogowany jest Kiosk
+
+
+# ================= MENU BOCZNE DLA KONDUKTORA / ADMINA =================
 with st.sidebar:
     st.markdown("""
         <div style="text-align: center; padding: 10px 0 20px 0;">
             <h3 style="color: #f97316; margin:0;">Koleje Mazowieckie</h3>
-            <p style="color: #64748b; font-size: 11px; margin:0;">Tryb produkcyjny</p>
+            <p style="color: #64748b; font-size: 11px; margin:0;">Terminal Konduktorski</p>
         </div>
     """, unsafe_allow_html=True)
     
@@ -209,7 +278,7 @@ with st.sidebar:
     st.markdown(f"**Rola:** `{st.session_state['rola']}`")
     st.markdown("---")
     
-    opcje_menu = ["🎫 Bilety", "🛒 Kiosk biletowy (Zakup)", "📋 Zadania", "ℹ️ Informacje", "📊 Raporty", "🔧 Narzędzia"]
+    opcje_menu = ["🎫 Bilety", "📋 Zadania", "ℹ️ Informacje", "📊 Raporty", "🔧 Narzędzia"]
     if st.session_state["rola"] == "Administrator":
         opcje_menu.append("👥 Użytkownicy")
         opcje_menu.append("🎟️ Baza Biletów (Admin)")
@@ -221,21 +290,21 @@ with st.sidebar:
     )
     
     st.markdown("---")
-    if st.button("🚪 Zamknij pociąg / Wyloguj"):
+    if st.button("🚪 Wyloguj urządzenie"):
         st.session_state["zalogowany"] = False
         st.session_state["user"] = ""
         st.session_state["rola"] = ""
         st.rerun()
 
-# ================= GŁÓWNY OBSZAR ROBOCZY =================
+# ================= GŁÓWNY OBSZAR ROBOCZY (KONDUKTOR / ADMIN) =================
 st.markdown(f"""
     <div class="terminal-header">
         <h2 style="margin:0; color: #f97316;">Terminal Przenośny - System Konduktorski</h2>
-        <p style="margin:2px 0 0 0; color: #94a3b8; font-size:13px;">Zalogowany użytkownik: <b>{st.session_state['user']}</b> | Status: <b>Połączono z serwerem KM</b></p>
+        <p style="margin:2px 0 0 0; color: #94a3b8; font-size:13px;">Zalogowany: <b>{st.session_state['user']}</b> | Status: <b>Online</b></p>
     </div>
 """, unsafe_allow_html=True)
 
-# ================= 1. BILETY =================
+# 1. BILETY
 if wybrane_menu == "🎫 Bilety":
     pod_menu = st.selectbox("Wybierz operację biletową:", [
         "🔍 Kontrola (Skaner kodów)", 
@@ -257,7 +326,7 @@ if wybrane_menu == "🎫 Bilety":
         with c2:
             st.markdown(f'<div class="card-metric" style="border-left: 4px solid #ef4444;"><h3>{st.session_state["p_gapowiczow"]}</h3><p>Brak uprawnień</p></div>', unsafe_allow_html=True)
         with c3:
-            st.markdown(f'<div class="card-metric" style="border-left: 4px solid #f97316;"><h3>{st.session_state["p_kary"]} zł</h3><p>Suma nałożonych kar</p></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="card-metric" style="border-left: 4px solid #f97316;"><h3>{st.session_state["p_kary"]} zł</h3><p>Suma kar</p></div>', unsafe_allow_html=True)
 
         st.markdown("<br>", unsafe_allow_html=True)
         st.write("### Skanowanie kodu biletowego")
@@ -267,7 +336,7 @@ if wybrane_menu == "🎫 Bilety":
 
         col_skan_1, col_skan_2 = st.columns([4, 1])
         with col_skan_1:
-            kod_wejscie = st.text_input("Zeskanuj kod kreskowy / QR:", key="skaner_input", placeholder="np. KM-2026-001")
+            kod_wejscie = st.text_input("Zeskanuj kod kreskowy / QR:", key="skaner_input", placeholder="np. KM-2026-001 lub KM-AUTO-...")
         with col_skan_2:
             st.markdown("<br>", unsafe_allow_html=True) 
             st.button("❌ Wyczyść", on_click=wyczysc_pole_skanera)
@@ -333,7 +402,7 @@ if wybrane_menu == "🎫 Bilety":
 
     elif pod_menu == "⚠ Nowe wezwanie (Mandat za brak biletu)":
         st.write("### 🚨 Wystawianie wezwania do zapłaty (Opłata dodatkowa)")
-        st.info("Uzupełnij dane pasażera, który podróżuje bez ważnego biletu lub dokumentu poświadczającego uprawnienia do ulgi.")
+        st.info("Uzupełnij dane pasażera, który podróżuje bez ważnego biletu.")
 
         with st.form("form_mandat_oficjalny"):
             pasażer_imie = st.text_input("Imię i Nazwisko pasażera:")
@@ -343,7 +412,7 @@ if wybrane_menu == "🎫 Bilety":
             powod_wystawienia = st.selectbox("Powód nałożenia opłaty:", [
                 "Brak ważnego biletu na przejazd",
                 "Brak dokumentu poświadczającego uprawnienie do ulgi",
-                "Naruszenie przepisów porządkowych (samowolne przerwanie podróży)",
+                "Naruszenie przepisów porządkowych",
                 "Przejazd bez ważnego biletu z winy pasażera"
             ])
             kwota_m = st.number_input("Kwota opłaty dodatkowej (zł):", value=250.0, step=10.0)
@@ -365,7 +434,7 @@ if wybrane_menu == "🎫 Bilety":
                     st.markdown(f"""
                         <div class="mandat-box">
                             <h3 style="color: #f97316; margin-top:0; text-align:center;">KOLEJE MAZOWIECKIE - SP Z O.O.</h3>
-                            <h4 style="text-align:center; margin-bottom: 15px;">ZAWIADOMIENIE - WEZWANIE DO ZAPŁATY NR {nr_wezwania}</h4>
+                            <h4 style="text-align:center; margin-bottom: 15px;">WEZWANIE DO ZAPŁATY NR {nr_wezwania}</h4>
                             <p><b>Data wystawienia:</b> {teraz.strftime('%Y-%m-%d %H:%M')}</p>
                             <p><b>Kontroler:</b> {st.session_state['user']} | <b>Pociąg:</b> {pociag_m}</p>
                             <hr style="border-color: #334155;">
@@ -374,14 +443,13 @@ if wybrane_menu == "🎫 Bilety":
                             <p><b>Adres:</b> {pasażer_adres}</p>
                             <p><b>Tytuł zobowiązania:</b> {powod_wystawienia}</p>
                             <h3 style="color: #ef4444; text-align:center; margin: 15px 0;">DO ZAPŁATY: {kwota_m:.2f} PLN</h3>
-                            <p style="font-size: 11px; color: #94a3b8; text-align:center; margin-bottom:0;">Należność należy uiścić w ciągu 14 dni od daty wystawienia na wskazany rachunek bankowy KM lub u konduktora.</p>
                         </div>
                     """, unsafe_allow_html=True)
                 else:
-                    st.error("Wypełnij przynajmniej imię i nazwisko oraz numer dokumentu pasażera.")
+                    st.error("Wypełnij imię i nazwisko oraz numer dokumentu pasażera.")
 
     elif pod_menu == "💳 Opłać mandat / Kara":
-        st.write("### Terminal płatniczy - Opłacanie bieżących kar i mandatów")
+        st.write("### Terminal płatniczy - Opłacanie kar i mandatów")
         df_nieopl = pd.read_sql("SELECT id, data_kontroli as [Data], linia as [Pociąg], kod_biletu as [Nr Wezwania], komentarz as [Szczegóły], kara as [Kwota (zł)] FROM historia_kontroli WHERE kara > 0 AND status_oplaty = 'Nieopłacony' ORDER BY id DESC", conn)
         
         if not df_nieopl.empty:
@@ -389,189 +457,73 @@ if wybrane_menu == "🎫 Bilety":
             
             with st.form("form_oplaty"):
                 wybrane_id = st.selectbox("Wybierz ID pozycji z tabeli do opłacenia:", df_nieopl["id"].tolist())
-                metoda_platnosci = st.radio("Wybierz formę płatności u konduktora:", ["💳 Karta płatnicza (Pinpad)", "💵 Gotówka", "📱 BLIK"])
+                metoda_platnosci = st.radio("Forma płatności u konduktora:", ["💳 Karta płatnicza (Pinpad)", "💵 Gotówka", "📱 BLIK"])
                 
-                if st.form_submit_button("Zatwierdź płatność i wydrukuj potwierdzenie", type="primary"):
+                if st.form_submit_button("Zatwierdź płatność", type="primary"):
                     c.execute("UPDATE historia_kontroli SET status_oplaty = 'Opłacony' WHERE id = ?", (wybrane_id,))
                     conn.commit()
-                    st.success(f"Płatność dla pozycji ID {wybrane_id} została pomyślnie przetworzona przez ({metoda_platnosci}). Status zmieniono na **Opłacony**!")
+                    st.success(f"Płatność dla pozycji ID {wybrane_id} przetworzona pomyślnie ({metoda_platnosci}).")
                     st.rerun()
         else:
             st.info("Brak nieopłaconych mandatów / wezwań w systemie.")
 
-# ================= 2. KIOSK BILETOWY (NOWA OPCJA) =================
-elif wybrane_menu == "🛒 Kiosk biletowy (Zakup)":
-    st.subheader("🛒 Samoobsługowy Kiosk Biletowy Kolei Mazowieckich")
-    st.info("Kup bilet samodzielnie online lub w stacjonarnym automacie biletowym. Po opłaceniu bilet zostanie natychmiast zapisany w centralnej bazie systemu do kontroli.")
-
-    with st.form("form_kiosk_zakup"):
-        st.write("### Konfiguracja biletu podróżnego")
-        kiosk_relacja = st.text_input("Relacja podróży (np. Warszawa Centralna -> Radom):")
-        kiosk_rodzaj = st.selectbox("Wybierz rodzaj biletu:", [
-            "Bilet jednorazowy normalny",
-            "Bilet jednorazowy ulgowy (50%)",
-            "Bilet miesięczny imienny",
-            "Bilet sieciowy dobowy",
-            "Bilet weekendowy KM"
-        ])
-        kiosk_cena = st.number_input("Cena biletu (zł):", value=22.00, step=1.0)
-        kiosk_platnosci = st.radio("Wybierz metodę płatności w kiosku:", ["💳 Karta płatnicza", "📱 BLIK", "💵 Gotówka (Banknoty/Monety)"])
-
-        btn_kup_kiosk = st.form_submit_button("💳 Opłać i pobierz bilet", type="primary")
-
-        if btn_kup_kiosk:
-            if kiosk_relacja.strip():
-                # Generowanie unikalnego kodu dla kiosku
-                kod_kiosku = f"KM-KIOSK-{datetime.now().strftime('%H%M%S')}"
-                waznosc_kiosku = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d %H:%M")
-                
-                # Zapis do głównej tabeli biletów
-                c.execute("INSERT INTO bilety (kod_biletu, rodzaj, data_waznosci, status) VALUES (?, ?, ?, ?)",
-                          (kod_kiosku, f"{kiosk_rodzaj} ({kiosk_relacja})", waznosc_kiosku, "Aktywny"))
-                conn.commit()
-
-                st.success(f"🎉 Płatność przez **{kiosk_platnosci}** zakończona sukcesem! Twój bilet został wygenerowany.")
-                
-                # Wyświetlenie wygenerowanego biletu z kodem w ładnym boksie
-                st.markdown(f"""
-                    <div class="mandat-box" style="border-color: #22c55e;">
-                        <h3 style="color: #22c55e; margin-top:0; text-align:center;">KOLEJE MAZOWIECKIE - BILET ELEKTRONICZNY</h3>
-                        <h4 style="text-align:center; margin-bottom: 15px;">KOD BILETU: {kod_kiosku}</h4>
-                        <p><b>Relacja:</b> {kiosk_relacja}</p>
-                        <p><b>Rodzaj oferty:</b> {kiosk_rodzaj}</p>
-                        <p><b>Ważny do:</b> {waznosc_kiosku}</p>
-                        <p><b>Kwota zapłacona:</b> {kiosk_cena:.2f} PLN ({kiosk_platnosci})</p>
-                        <hr style="border-color: #334155;">
-                        <p style="font-size: 11px; color: #94a3b8; text-align:center; margin-bottom:0;">Zapisz powyższy kod lub zeskanuj go u konduktora podczas kontroli w pociągu.</p>
-                    </div>
-                """, unsafe_allow_html=True)
-            else:
-                st.error("Proszę wpisać relację podróży.")
-
-# ================= 3. ZADANIA =================
+# 2. ZADANIA
 elif wybrane_menu == "📋 Zadania":
     st.subheader("Zadania i harmonogram pracy")
-    st.info("• Harmonogram zmiany: 06:00 - 14:00\n• Obieg pociągu: KM-121\n• Status terminala: Zsynchronizowany z serwerem centralnym KM")
+    st.info("• Harmonogram zmiany: 06:00 - 14:00\n• Obieg pociągu: KM-121")
 
-# ================= 4. INFORMACJE =================
-elif wybrane_menu == "ℹ️️ Informacje":
+# 3. INFORMACJE
+elif wybrane_menu == "ℹ️ Informacje":
     st.subheader("Komunikaty i Taryfikator")
-    st.write("1. Aktualny cennik opłat dodatkowych obowiązuje od 1 stycznia.\n2. W pociągach pospiesznych wymagana rezerwacja miejsc w rowerach.\n3. W razie awarii czytnika skorzystaj z wpisania ręcznego.")
+    st.write("1. Aktualny cennik opłat dodatkowych obowiązuje od 1 stycznia.\n2. W pociągach pospiesznych wymagana rezerwacja miejsc w rowerach.")
 
-# ================= 5. RAPORTY =================
+# 4. RAPORTY
 elif wybrane_menu == "📊 Raporty":
     st.subheader("Raport z przeprowadzonych kontroli i mandatów")
     df_rap = pd.read_sql("SELECT data_kontroli as [Data], linia as [Pociąg], kontroler as [Konduktor], kod_biletu as [Kod/Wezwanie], wynik as [Wynik], kara as [Kara (zł)], status_oplaty as [Status Opłaty] FROM historia_kontroli ORDER BY id DESC", conn)
     if not df_rap.empty:
         st.dataframe(df_rap, use_container_width=True, hide_index=True)
         suma_kar_c = df_rap["Kara (zł)"].sum()
-        st.metric("Suma nałożonych kar podczas zmiany", f"{suma_kar_c} zł")
+        st.metric("Suma nałożonych kar", f"{suma_kar_c} zł")
         
         csv_pobierz = df_rap.to_csv(index=False).encode('utf-8')
         st.download_button("📥 Pobierz raport zmianowy (CSV)", data=csv_pobierz, file_name="raport_konduktorski_km.csv", mime="text/csv")
     else:
         st.info("Brak wpisów w historii kontroli na tej zmianie.")
 
-# ================= 6. NARZĘDZIA =================
+# 5. NARZĘDZIA
 elif wybrane_menu == "🔧 Narzędzia":
     st.subheader("Narzędzia serwisowe terminala")
-    if st.button("🔄 Synchronizuj bazę danych z dyspozytornią"):
-        st.success("Synchronizacja zakończona pomyślnie. Wszystkie dane zapisane.")
-    if st.button("🖨️ Test drukarki termicznej"):
-        st.toast("Wydruk testowy powiódł się!", icon="🖨️")
+    if st.button("🔄 Synchronizuj bazę danych"):
+        st.success("Synchronizacja zakończona pomyślnie.")
 
-# ================= 7. UŻYTKOWNICY (TYLKO ADMIN) =================
+# 6. UŻYTKOWNICY (ADMIN)
 elif wybrane_menu == "👥 Użytkownicy" and st.session_state["rola"] == "Administrator":
-    st.subheader("👥 Zarządzanie użytkownikami systemowymi")
+    st.subheader("👥 Zarządzanie użytkownikami i kioskami")
     
-    tab_lista, tab_dodaj, tab_usun = st.tabs(["📋 Lista pracowników", "➕ Dodaj pracownika", "🗑️ Usuń konto"])
-    
+    tab_lista, tab_dodaj = st.tabs(["📋 Lista kont", "➕ Dodaj konto"])
     with tab_lista:
-        df_users = pd.read_sql("SELECT id as [ID], login as [Login], rola as [Rola], imie as [Imię i Nazwisko / ID] FROM uzytkownicy", conn)
+        df_users = pd.read_sql("SELECT id as [ID], login as [Login], rola as [Rola], imie as [Opis / Imię] FROM uzytkownicy", conn)
         st.dataframe(df_users, use_container_width=True, hide_index=True)
-        
     with tab_dodaj:
         with st.form("form_dodaj_uzytkownika"):
-            st.write("### Rejestracja nowego pracownika / konduktora")
-            nowy_login = st.text_input("Login systemowy:")
+            nowy_login = st.text_input("Login (np. kiosk2, konduktor2):")
             nowe_haslo = st.text_input("Hasło / PIN:", type="password")
-            nowe_imie = st.text_input("Imię i Nazwisko / Identyfikator (np. Jan Kowalski ID: 105):")
-            nowa_rola = st.selectbox("Rola w systemie:", ["Kontroler", "Administrator"])
+            nowe_imie = st.text_input("Opis / Nazwa:")
+            nowa_rola = st.selectbox("Rola:", ["Kontroler", "Administrator", "Kiosk"])
             
-            if st.form_submit_button("Utwórz konto pracownika", type="primary"):
-                if nowy_login.strip() and nowe_haslo.strip() and nowe_imie.strip():
+            if st.form_submit_button("Utwórz konto"):
+                if nowy_login.strip() and nowe_haslo.strip():
                     try:
                         c.execute("INSERT INTO uzytkownicy (login, haslo, rola, imie) VALUES (?, ?, ?, ?)",
                                   (nowy_login.strip(), nowe_haslo, nowa_rola, nowe_imie.strip()))
                         conn.commit()
-                        st.success(f"Pomyślnie utworzono konto dla: **{nowe_imie}** (Rola: {nowa_rola})!")
+                        st.success("Utworzono nowe konto!")
                     except sqlite3.IntegrityError:
-                        st.error("Użytkownik o takim loginie już istnieje w bazie!")
-                else:
-                    st.error("Wypełnij wszystkie pola formularza.")
-                    
-    with tab_usun:
-        with st.form("form_usun_uzytkownika"):
-            st.write("### Usuwanie konta pracownika")
-            df_u_del = pd.read_sql("SELECT id, login, imie FROM uzytkownicy", conn)
-            
-            if not df_u_del.empty:
-                wybrany_u_id = st.selectbox("Wybierz użytkownika do usunięcia:", df_u_del["id"].tolist(), format_func=lambda x: f"ID: {x} - {df_u_del[df_u_del['id'] == x]['imie'].values[0]} ({df_u_del[df_u_del['id'] == x]['login'].values[0]})")
-                
-                if st.form_submit_button("🗑️ Usuń wybrane konto", type="primary"):
-                    c.execute("SELECT login FROM uzytkownicy WHERE id = ?", (wybrany_u_id,))
-                    u_to_del = c.fetchone()[0]
-                    if u_to_del == "admin" and st.session_state["user"] == "Kierownik Pociągu":
-                        st.error("Nie możesz usunąć głównego konta administratora systemu!")
-                    else:
-                        c.execute("DELETE FROM uzytkownicy WHERE id = ?", (wybrany_u_id,))
-                        conn.commit()
-                        st.success(f"Konto ID {wybrany_u_id} zostało usunięte z systemu.")
-                        st.rerun()
-            else:
-                st.info("Brak użytkowników w bazie.")
+                        st.error("Login już istnieje!")
 
-# ================= 8. BAZA BILETÓW (TYLKO ADMIN / KIEROWNIK) =================
+# 7. BAZA BILETÓW (ADMIN)
 elif wybrane_menu == "🎟️ Baza Biletów (Admin)" and st.session_state["rola"] == "Administrator":
-    st.subheader("🎟️ Zarządzanie pulą biletów w systemie centralnym")
-    
-    tab_b_lista, tab_b_dodaj = st.tabs(["📋 Aktualne bilety w bazie", "➕ Dodaj nowy bilet"])
-    
-    with tab_b_lista:
-        df_bilety_db = pd.read_sql("SELECT id as [ID], kod_biletu as [Kod Biletu], rodzaj as [Rodzaj Oferty], data_waznosci as [Ważny do], status as [Status] FROM bilety ORDER BY id DESC", conn)
-        st.dataframe(df_bilety_db, use_container_width=True, hide_index=True)
-        
-    with tab_b_dodaj:
-        with st.form("form_dodaj_bilet_admin"):
-            st.write("### Dodawanie nowego biletu do systemu")
-            
-            kod_b_input = st.text_input("Kod biletu (wpisz lub wklej dokładny kod/numer):", placeholder="np. 4355 lub KM-2026-XYZ")
-            rodzaj_b_input = st.selectbox("Rodzaj / Oferta biletu:", [
-                "Bilet jednorazowy normalny",
-                "Bilet jednorazowy ulgowy (50%)",
-                "Bilet miesięczny imienny",
-                "Bilet sieciowy dobowy",
-                "Bilet weekendowy KM"
-            ])
-            
-            st.markdown("**Okres ważności biletu:**")
-            col_d1, col_d2 = st.columns(2)
-            with col_d1:
-                data_w_input = st.date_input("Data ważności (dzień):", value=datetime.now() + timedelta(days=1))
-            with col_d2:
-                czas_w_input = st.time_input("Godzina ważności:", value=datetime.now().time())
-                
-            status_b_input = st.selectbox("Początkowy status:", ["Aktywny", "Skasowany"])
-            
-            if st.form_submit_button("💾 Zapisz bilet w bazie", type="primary"):
-                if kod_b_input.strip():
-                    pelna_data_waznosci = f"{data_w_input.strftime('%Y-%m-%d')} {czas_w_input.strftime('%H:%M')}"
-                    try:
-                        c.execute("INSERT INTO bilety (kod_biletu, rodzaj, data_waznosci, status) VALUES (?, ?, ?, ?)",
-                                  (kod_b_input.strip(), rodzaj_b_input, pelna_data_waznosci, status_b_input))
-                        conn.commit()
-                        st.success(f"Pomyślnie dodano bilet o kodzie **{kod_b_input.strip()}** ({rodzaj_b_input}) ważny do **{pelna_data_waznosci}**!")
-                    except sqlite3.IntegrityError:
-                        st.error("Bilet o takim kodzie już istnieje w bazie!")
-                else:
-                    st.error("Podaj kod biletu.")
+    st.subheader("🎟️ Zarządzanie pulą biletów")
+    df_bilety_db = pd.read_sql("SELECT id as [ID], kod_biletu as [Kod], rodzaj as [Oferta], data_waznosci as [Ważny do], status as [Status] FROM bilety ORDER BY id DESC", conn)
+    st.dataframe(df_bilety_db, use_container_width=True, hide_index=True)
