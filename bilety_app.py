@@ -239,7 +239,7 @@ if wybrane_menu == "🎫 Bilety":
     pod_menu = st.selectbox("Wybierz operację biletową:", [
         "🔍 Kontrola (Skaner kodów)", 
         "➕ Nowy bilet (Sprzedaż)", 
-        "⚠️ Nowe wezwanie (Mandat za brak biletu)", 
+        "⚠️️ Nowe wezwanie (Mandat za brak biletu)", 
         "💳 Opłać mandat / Kara"
     ])
     
@@ -261,15 +261,16 @@ if wybrane_menu == "🎫 Bilety":
         st.markdown("<br>", unsafe_allow_html=True)
         st.write("### Skanowanie kodu biletowego")
         
-        # Układ z polem wprowadzania oraz przyciskiem czyszczenia [X] obok
+        # Funkcja callback czyszcząca pole input przed ponownym wyrenderowaniem
+        def wyczysc_pole_skanera():
+            st.session_state["skaner_input"] = ""
+
         col_skan_1, col_skan_2 = st.columns([4, 1])
         with col_skan_1:
             kod_wejscie = st.text_input("Zeskanuj kod kreskowy / QR:", key="skaner_input", placeholder="np. KM-2026-001")
         with col_skan_2:
             st.markdown("<br>", unsafe_allow_html=True) 
-            if st.button("❌ Wyczyść"):
-                st.session_state["skaner_input"] = ""
-                st.rerun()
+            st.button("❌ Wyczyść", on_click=wyczysc_pole_skanera)
 
         if st.button("Weryfikuj uprawnienia do przejazdu"):
             if kod_wejscie:
