@@ -140,10 +140,13 @@ try:
 except sqlite3.OperationalError:
     pass
 
-# Automatyczne dodanie domyślnego użytkownika po cichu w tle (bez wyświetlania na ekranie)
+# Domyślny użytkownik konduktor oraz administrator (jeśli baza jest pusta)
 c.execute("SELECT COUNT(*) FROM uzytkownicy")
 if c.fetchone()[0] == 0:
-    c.execute("INSERT INTO uzytkownicy (login, haslo, rola, imie) VALUES (?, ?, ?, ?)", ("konduktor", "123", "Kontroler", "Jan Konduktor (ID: 104)"))
+    c.executemany("INSERT INTO uzytkownicy (login, haslo, rola, imie) VALUES (?, ?, ?, ?)", [
+        ("konduktor", "123", "Kontroler", "Jan Konduktor (ID: 104)"),
+        ("admin", "admin123", "Administrator", "Kierownik Pociągu")
+    ])
     conn.commit()
 
 # Stan sesji
@@ -161,7 +164,7 @@ if "p_gapowiczow" not in st.session_state:
 if "p_kary" not in st.session_state:
     st.session_state["p_kary"] = 0.0
 
-# ================= LOGOWANIE (CZYSTY INTERFEJS) =================
+# ================= LOGOWANIE =================
 if not st.session_state["zalogowany"]:
     st.markdown("""
         <div class="terminal-header" style="text-align: center; max-width: 450px; margin: 50px auto;">
@@ -199,11 +202,17 @@ with st.sidebar:
     """, unsafe_allow_html=True)
     
     st.markdown(f"**Pracownik:** `{st.session_state['user']}`")
+    st.markdown(f"**Rola:** `{st.session_state['rola']}`")
     st.markdown("---")
     
+    # Dynamiczne menu w zależności od uprawnień
+    opcje_menu = ["🎫 Bilety", "📋 Zadania", "ℹ️ Informacje", "📊 Raporty", "🔧 Narzędzia"]
+    if st.session_state["rola"] == "Administrator":
+        opcje_menu.append("👥 Użytkownicy")
+
     wybrane_menu = st.radio(
         "Nawigacja:",
-        ["🎫 Bilety", "📋 Zadania", "ℹ️ Informacje", "📊 Raporty", "🔧 Narzędzia"],
+        opcje_menu,
         label_visibility="collapsed"
     )
     
@@ -408,5 +417,57 @@ elif wybrane_menu == "🔧 Narzędzia":
     st.subheader("Narzędzia serwisowe terminala")
     if st.button("🔄 Synchronizuj bazę danych z dyspozytornią"):
         st.success("Synchronizacja zakończona pomyślnie. Wszystkie dane zapisane.")
-    if st.button("🖨️ Test drukarki termicznej"):
+    if st.button("🖨️️ Test drukarki termicznej"):
         st.toast("Wydruk testowy powiódł się!", icon="🖨️")
+
+# ================= 6. UŻYTKOWNICY (TYLKO DLA KIEROWNIKA / ADMINA) =================
+elif wybrane_menu == "👥 Użytkownicy" and st.session_state["rola"] == "Administrator":
+    st.subheader("👥 Zarządzanie użytkownikami systemowymi")
+    
+    tab_lista, tab_dodaj, tab_usun = st.tabs(["📋 Lista pracowników", "➕ Dodaj pracownika", "🗑️ Usuń konto"])
+    
+    with tab_lista:
+        df_users = pd.read_sql("SELECT id as [ID], login as [Login], rola as [Rola], imie as [Imię i Nazwisko / ID] FROM uzytkownicy", conn)
+        st.dataframe(df_users, use_container_width=True, hide_index=True)
+        
+    with tab_dodaj:
+        with st.form("form_dodaj_uzytkownika"):
+            st.write("### Rejestracja nowego pracownika / konduktora")
+            nowy_login = st.text_input("Login systemowy:")
+            nowe_haslo = st.text_input("Hasło / PIN:", type="password")
+            nowe_imie = st.text_input("Imię i Nazwisko / Identyfikator (np. Jan Kowalski ID: 105):")
+            nowa_rola = st.selectbox("Rola w systemie:", ["Kontroler", "Administrator"])
+            
+            if st.form_submit_button("Utwórz konto pracownika", type="primary"):
+                if nowy_login.strip() and nowe_haslo.strip() and nowe_imie.strip():
+                    try:
+                        c.execute("INSERT INTO uzytkownicy (login, haslo, rola, imie) VALUES (?, ?, ?, ?)",
+                                  (nowy_login.strip(), nowe_haslo, nowa_rola, nowe_imie.strip()))
+                        conn.commit()
+                        st.success(f"Pomyślnie utworzono konto dla: **{nowe_imie}** (Rola: {nowa_rola})!")
+                    except sqlite3.IntegrityError:
+                        st.error("Użytkownik o takim loginie już istnieje w bazie!")
+                else:
+                    st.error("Wypełnij wszystkie pola formularza.")
+                    
+    with tab_usun:
+        with st.form("form_usun_uzytkownika"):
+            st.write("### Usuwanie konta pracownika")
+            df_u_del = pd.read_sql("SELECT id, login, imie FROM uzytkownicy", conn)
+            
+            if not df_u_del.empty:
+                wybrany_u_id = st.selectbox("Wybierz użytkownika do usunięcia:", df_u_del["id"].tolist(), format_func=lambda x: f"ID: {x} - {df_u_del[df_u_del['id'] == x]['imie'].values[0]} ({df_u_del[df_u_del['id'] == x]['login'].values[0]})")
+                
+                if st.form_submit_button("🗑️ Usuń wybrane konto", type="primary"):
+                    # Zabezpieczenie przed usunięciem samego siebie lub ostatniego admina
+                    c.execute("SELECT login FROM uzytkownicy WHERE id = ?", (wybrany_u_id,))
+                    u_to_del = c.fetchone()[0]
+                    if u_to_del == "admin" and st.session_state["user"] == "Kierownik Pociągu":
+                        st.error("Nie możesz usunąć głównego konta administratora systemu!")
+                    else:
+                        c.execute("DELETE FROM uzytkownicy WHERE id = ?", (wybrany_u_id,))
+                        conn.commit()
+                        st.success(f"Konto ID {wybrany_u_id} zostało usunięte z systemu.")
+                        st.rerun()
+            else:
+                st.info("Brak użytkowników w bazie.")
