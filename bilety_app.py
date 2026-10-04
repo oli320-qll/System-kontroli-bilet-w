@@ -140,8 +140,11 @@ try:
 except sqlite3.OperationalError:
     pass
 
-# USUNIĘTO SZTUCZNE DANE TESTOWE – baza jest teraz czysta na start.
-# Możesz dodawać użytkowników, bilety i mandaty z poziomu aplikacji lub własnych skryptów.
+# Automatyczne dodanie domyślnego użytkownika po cichu w tle (bez wyświetlania na ekranie)
+c.execute("SELECT COUNT(*) FROM uzytkownicy")
+if c.fetchone()[0] == 0:
+    c.execute("INSERT INTO uzytkownicy (login, haslo, rola, imie) VALUES (?, ?, ?, ?)", ("konduktor", "123", "Kontroler", "Jan Konduktor (ID: 104)"))
+    conn.commit()
 
 # Stan sesji
 if "zalogowany" not in st.session_state:
@@ -158,7 +161,7 @@ if "p_gapowiczow" not in st.session_state:
 if "p_kary" not in st.session_state:
     st.session_state["p_kary"] = 0.0
 
-# ================= LOGOWANIE =================
+# ================= LOGOWANIE (CZYSTY INTERFEJS) =================
 if not st.session_state["zalogowany"]:
     st.markdown("""
         <div class="terminal-header" style="text-align: center; max-width: 450px; margin: 50px auto;">
@@ -174,12 +177,6 @@ if not st.session_state["zalogowany"]:
             l_in = st.text_input("Identyfikator / Login:")
             h_in = st.text_input("Kod PIN / Hasło:", type="password")
             
-            # Dodanie domyślnego konta serwisowego, aby w ogóle dało się zalogować przy pustej bazie
-            c.execute("SELECT COUNT(*) FROM uzytkownicy")
-            if c.fetchone()[0] == 0:
-                c.execute("INSERT INTO uzytkownicy (login, haslo, rola, imie) VALUES (?, ?, ?, ?)", ("konduktor", "123", "Kontroler", "Jan Konduktor (ID: 104)"))
-                conn.commit()
-
             if st.form_submit_button("Zaloguj do pociągu"):
                 c.execute("SELECT rola, imie FROM uzytkownicy WHERE login = ? AND haslo = ?", (l_in.strip(), h_in))
                 res = c.fetchone()
@@ -190,7 +187,6 @@ if not st.session_state["zalogowany"]:
                     st.rerun()
                 else:
                     st.error("Błędny login lub PIN.")
-        st.info("💡 **Domyślne dane logowania:** `konduktor` / `123`")
     st.stop()
 
 # ================= MENU BOCZNE (LEWA STRONA) =================
@@ -316,7 +312,7 @@ if wybrane_menu == "🎫 Bilety":
                     st.error("Podaj relację podróży.")
 
     elif pod_menu == "⚠️ Nowe wezwanie (Mandat za brak biletu)":
-        st.write("### 🚨 Wystawianie wezwania do zapłaty (Opłata dodatková)")
+        st.write("### 🚨 Wystawianie wezwania do zapłaty (Opłata dodatkowa)")
         st.info("Uzupełnij dane pasażera, który podróżuje bez ważnego biletu lub dokumentu poświadczającego uprawnienia do ulgi.")
 
         with st.form("form_mandat_oficjalny"):
