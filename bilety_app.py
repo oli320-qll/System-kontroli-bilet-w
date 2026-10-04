@@ -344,7 +344,7 @@ if st.session_state["rola"] == "Kiosk":
 
         with c_form_pl:
             with st.form("form_platnosc_kiosk"):
-                kod_wlasny_kiosk = st.text_input("Kod / Identyfikator biletu:", value=f"KOSK-{datetime.now().strftime('%H%M%S')}")
+                kod_wlasny_kiosk = st.text_input("Zeskanuj lub wpisz kod biletu:", placeholder="Wpisz kod z czytnika / skanera...")
                 relacja_kiosk = st.text_input("Stacja docelowa / Relacja:", value="Warszawa Centralna -> Pruszków")
                 metoda_pl = st.radio("Wybierz metodę płatności:", [
                     "💳 Karta płatnicza (Zbliżeniowa)",
@@ -411,7 +411,7 @@ with st.sidebar:
     st.markdown(f"**Rola:** `{st.session_state['rola']}`")
     st.markdown("---")
     
-    opcje_menu = ["🎫 Bilety", "📋 Zadania", "ℹ️️ Informacje", "📊 Raporty", "🔧 Narzędzia"]
+    opcje_menu = ["🎫 Bilety", "📋 Zadania", "ℹ️ Informacje", "📊 Raporty", "🔧 Narzędzia"]
     if st.session_state["rola"] == "Administrator":
         opcje_menu.append("👥 Użytkownicy")
         opcje_menu.append("🎟️ Baza Biletów (Admin)")
@@ -470,7 +470,7 @@ if wybrane_menu == "🎫 Bilety":
 
         col_skan_1, col_skan_2 = st.columns([4, 1])
         with col_skan_1:
-            kod_wejscie = st.text_input("Wpisz lub zeskanuj kod biletu:", key="skaner_input", placeholder="np. wpisz dokładnie taki kod, jaki został nadany...")
+            kod_wejscie = st.text_input("Wpisz lub zeskanuj kod biletu:", key="skaner_input", placeholder="Zeskanuj kod skanerem lub wpisz ręcznie...")
         with col_skan_2:
             st.markdown("<br>", unsafe_allow_html=True) 
             st.button("❌ Wyczyść", on_click=wyczysc_pole_skanera)
@@ -498,7 +498,7 @@ if wybrane_menu == "🎫 Bilety":
                     if status_b == "Skasowany":
                         st.session_state["p_gapowiczow"] += 1
                         st.session_state["p_kary"] += stawka_kary
-                        st.warning(f"⚠️ **BILET JUŻ WYKORZYSTANY!**\nRodzaj: {rodzaj}. Mandat: **{stawka_kary} zł**.")
+                        st.warning(f"⚠️️ **BILET JUŻ WYKORZYSTANY!**\nRodzaj: {rodzaj}. Mandat: **{stawka_kary} zł**.")
                         c.execute("INSERT INTO historia_kontroli (kod_biletu, wynik, komentarz, data_kontroli, kontroler, linia, kara, status_oplaty) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                                   (kod_czysty, "Skasowany wcześniej", rodzaj, str(teraz), st.session_state["user"], pociag_info, stawka_kary, "Nieopłacony"))
                         conn.commit()
@@ -520,7 +520,7 @@ if wybrane_menu == "🎫 Bilety":
     elif pod_menu == "➕ Nowy bilet (Sprzedaż u konduktora)":
         with st.form("form_sprzedaz"):
             st.write("### Wystawienie biletu w pociągu")
-            kod_wlasny_konduktor = st.text_input("Wpisz kod biletu:", value=f"KOND-{datetime.now().strftime('%H%M%S')}")
+            kod_wlasny_konduktor = st.text_input("Zeskanuj lub wpisz kod biletu:", placeholder="Zeskanuj kod z czytnika lub wpisz...")
             trasa = st.text_input("Relacja:", value="Warszawa -> Radom")
             rodzaj_biletu = st.selectbox("Oferta:", ["Bilet jednorazowy normalny", "Bilet jednorazowy ulgowy (50%)", "Bilet taryfowy strefowy"])
             cena_biletu = st.number_input("Należność w zł:", value=15.50, step=0.50)
