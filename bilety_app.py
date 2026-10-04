@@ -228,14 +228,11 @@ if not st.session_state["zalogowany"]:
 
 # ================= SPECJALNY TRYB: KIOSK =================
 if st.session_state["rola"] == "Kiosk":
-    # Mechanizm auto-odświeżania co 1 sekundę (symulujący zapytanie do bazy / stanu i odświeżający widok kiosku)
-    st.markdown("""
-        <script>
-            setTimeout(function(){
-                window.location.reload();
-            }, 1000);
-        </script>
-    """, unsafe_allow_html=True)
+    # Górny pasek z przyciskiem szybkiego odświeżania stanu z bazy
+    col_k_title, col_k_btn = st.columns([4, 1])
+    with col_k_btn:
+        if st.button("🔄 Odśwież stan"):
+            st.rerun()
 
     # Ekran blokady z dynamicznym zegarem
     if czy_kiosk_zablokowany():
@@ -245,7 +242,7 @@ if st.session_state["rola"] == "Kiosk":
                     <div style="font-size: 22px; color: #dc2626; display: flex; align-items: center; gap: 8px;">🚊 KM RTM</div>
                     <div id="live-clock" style="font-size: 18px; font-variant-numeric: tabular-nums;">--:--:-- | ---</div>
                 </div>
-                <div style="text-align: center; padding: 70px 20px; background-color: #edf2f7; height: 65vh; display: flex; flex-direction: column; justify-content: center; align-items: center;">
+                <div style="text-align: center; padding: 70px 20px; background-color: #edf2f7; height: 60vh; display: flex; flex-direction: column; justify-content: center; align-items: center;">
                     <div style="font-size: 110px; color: #dc2626; margin-bottom: 15px; line-height: 1;">🚫</div>
                     <h1 style="color: #0f172a; font-size: 42px; font-weight: 800; letter-spacing: 2px; margin: 0;">KASOWNIK ZABLOKOWANY</h1>
                     <p style="color: #64748b; font-size: 16px; margin-top: 10px;">Urządzenie zostało zablokowane przez obsługę pociągu.</p>
@@ -265,7 +262,7 @@ if st.session_state["rola"] == "Kiosk":
                 setInterval(updateClock, 1000);
                 updateClock();
             </script>
-        """, height=450)
+        """, height=420)
         
         st.markdown("<br>", unsafe_allow_html=True)
         with st.expander("🛠️ Panel serwisowy (Wymaga PIN)"):
