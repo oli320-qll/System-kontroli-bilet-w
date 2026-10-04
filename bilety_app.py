@@ -149,7 +149,7 @@ if c.fetchone()[0] == 0:
     ])
     conn.commit()
 
-# Stan sesji
+# ================= TRWAŁY STAN SESJI (Zapobiega wylogowywaniu) =================
 if "zalogowany" not in st.session_state:
     st.session_state["zalogowany"] = False
 if "user" not in st.session_state:
@@ -180,7 +180,8 @@ if not st.session_state["zalogowany"]:
             l_in = st.text_input("Identyfikator / Login:")
             h_in = st.text_input("Kod PIN / Hasło:", type="password")
             
-            if st.form_submit_button("Zaloguj do pociągu"):
+            btn_zaloguj = st.form_submit_button("Zaloguj do pociągu")
+            if btn_zaloguj:
                 c.execute("SELECT rola, imie FROM uzytkownicy WHERE login = ? AND haslo = ?", (l_in.strip(), h_in))
                 res = c.fetchone()
                 if res:
@@ -205,7 +206,6 @@ with st.sidebar:
     st.markdown(f"**Rola:** `{st.session_state['rola']}`")
     st.markdown("---")
     
-    # Dynamiczne menu w zależności od uprawnień
     opcje_menu = ["🎫 Bilety", "📋 Zadania", "ℹ️ Informacje", "📊 Raporty", "🔧 Narzędzia"]
     if st.session_state["rola"] == "Administrator":
         opcje_menu.append("👥 Użytkownicy")
@@ -219,6 +219,8 @@ with st.sidebar:
     st.markdown("---")
     if st.button("🚪 Zamknij pociąg / Wyloguj"):
         st.session_state["zalogowany"] = False
+        st.session_state["user"] = ""
+        st.session_state["rola"] = ""
         st.rerun()
 
 # ================= GŁÓWNY OBSZAR ROBOCZY =================
@@ -417,10 +419,10 @@ elif wybrane_menu == "🔧 Narzędzia":
     st.subheader("Narzędzia serwisowe terminala")
     if st.button("🔄 Synchronizuj bazę danych z dyspozytornią"):
         st.success("Synchronizacja zakończona pomyślnie. Wszystkie dane zapisane.")
-    if st.button("🖨️️ Test drukarki termicznej"):
+    if st.button("🖨 Test drukarki termicznej"):
         st.toast("Wydruk testowy powiódł się!", icon="🖨️")
 
-# ================= 6. UŻYTKOWNICY (TYLKO DLA KIEROWNIKA / ADMINA) =================
+# ================= 6. UŻYTKOWNICY =================
 elif wybrane_menu == "👥 Użytkownicy" and st.session_state["rola"] == "Administrator":
     st.subheader("👥 Zarządzanie użytkownikami systemowymi")
     
@@ -459,7 +461,6 @@ elif wybrane_menu == "👥 Użytkownicy" and st.session_state["rola"] == "Admini
                 wybrany_u_id = st.selectbox("Wybierz użytkownika do usunięcia:", df_u_del["id"].tolist(), format_func=lambda x: f"ID: {x} - {df_u_del[df_u_del['id'] == x]['imie'].values[0]} ({df_u_del[df_u_del['id'] == x]['login'].values[0]})")
                 
                 if st.form_submit_button("🗑️ Usuń wybrane konto", type="primary"):
-                    # Zabezpieczenie przed usunięciem samego siebie lub ostatniego admina
                     c.execute("SELECT login FROM uzytkownicy WHERE id = ?", (wybrany_u_id,))
                     u_to_del = c.fetchone()[0]
                     if u_to_del == "admin" and st.session_state["user"] == "Kierownik Pociągu":
