@@ -1,5 +1,6 @@
 import sqlite3
 import streamlit as st
+import streamlit.components.v1 as components
 import pandas as pd
 from datetime import datetime, timedelta
 
@@ -227,17 +228,19 @@ if not st.session_state["zalogowany"]:
 
 # ================= SPECJALNY TRYB: KIOSK =================
 if st.session_state["rola"] == "Kiosk":
-    # Ekran blokady z dynamicznym zegarem JS odświeżającym się w czasie rzeczywistym
+    # Ekran blokady z komponentem HTML wyświetlającym żywy zegar i datę
     if czy_kiosk_zablokowany():
-        st.markdown("""
-            <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 20px; background-color: #e2e8f0; border-bottom: 2px solid #cbd5e1; color: #0f172a; font-weight: bold;">
-                <div style="font-size: 22px; color: #dc2626;">🚊 KM RTM</div>
-                <div id="live-clock" style="font-size: 18px;">--:--:-- | ---</div>
-            </div>
-            <div style="text-align: center; padding: 60px 20px; background-color: #edf2f7; min-height: 75vh; display: flex; flex-direction: column; justify-content: center; align-items: center;">
-                <div style="font-size: 110px; color: #dc2626; margin-bottom: 20px; line-height: 1;">🚫</div>
-                <h1 style="color: #0f172a; font-size: 42px; font-weight: 800; letter-spacing: 2px; margin: 0;">KASOWNIK ZABLOKOWANY</h1>
-                <p style="color: #64748b; font-size: 16px; margin-top: 10px;">Urządzenie zostało zablokowane przez obsługę pociągu.</p>
+        components.html("""
+            <div style="margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
+                <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 25px; background-color: #e2e8f0; border-bottom: 2px solid #cbd5e1; color: #0f172a; font-weight: bold;">
+                    <div style="font-size: 22px; color: #dc2626; display: flex; align-items: center; gap: 8px;">🚊 KM RTM</div>
+                    <div id="live-clock" style="font-size: 18px; font-variant-numeric: tabular-nums;">--:--:-- | ---</div>
+                </div>
+                <div style="text-align: center; padding: 70px 20px; background-color: #edf2f7; height: 65vh; display: flex; flex-direction: column; justify-content: center; align-items: center;">
+                    <div style="font-size: 110px; color: #dc2626; margin-bottom: 15px; line-height: 1;">🚫</div>
+                    <h1 style="color: #0f172a; font-size: 42px; font-weight: 800; letter-spacing: 2px; margin: 0;">KASOWNIK ZABLOKOWANY</h1>
+                    <p style="color: #64748b; font-size: 16px; margin-top: 10px;">Urządzenie zostało zablokowane przez obsługę pociągu.</p>
+                </div>
             </div>
             <script>
                 function updateClock() {
@@ -253,7 +256,7 @@ if st.session_state["rola"] == "Kiosk":
                 setInterval(updateClock, 1000);
                 updateClock();
             </script>
-        """, unsafe_allow_html=True)
+        """, height=450)
         
         st.markdown("<br>", unsafe_allow_html=True)
         with st.expander("🛠️ Panel serwisowy (Wymaga PIN)"):
@@ -371,7 +374,7 @@ if st.session_state["rola"] == "Kiosk":
                         st.rerun()
 
     st.markdown("---")
-    with st.expander("🛠️️ Panel serwisowy / Wyjdź z trybu kiosku (Wymaga PIN)"):
+    with st.expander("🛠 Panel serwisowy / Wyjdź z trybu kiosku (Wymaga PIN)"):
         pin_wyjscie = st.text_input("Podaj kod PIN serwisowy:", type="password")
         if st.button("Wyloguj kiosk"):
             if pin_wyjscie == "123" or pin_wyjscie == "admin123":
