@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 # Układ szeroki
 st.set_page_config(page_title="Terminal / Kiosk KM", layout="wide")
 
-# Zaawansowana stylizacja CSS
+# Zaawansowana stylizacja CSS zapewniająca płynność i nowoczesny wygląd
 st.markdown("""
     <style>
     .stApp {
@@ -228,7 +228,7 @@ if not st.session_state["zalogowany"]:
 
 # ================= SPECJALNY TRYB: KIOSK =================
 if st.session_state["rola"] == "Kiosk":
-    # Ekran blokady z komponentem HTML wyświetlającym żywy zegar i datę
+    # Płynny zegar i ekran blokady w komponencie HTML
     if czy_kiosk_zablokowany():
         components.html("""
             <div style="margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
@@ -614,7 +614,7 @@ elif wybrane_menu == "👥 Użytkownicy" and st.session_state["rola"] == "Admini
     st.dataframe(df_users, use_container_width=True, hide_index=True)
 
 # 7. BAZA BILETÓW (ADMIN)
-elif wybrane_menu == "🎟️ Baza Biletów (Admin)" and st.session_state["rola"] == "Administrator":
+elif wybrane_menu == "🎟️️ Baza Biletów (Admin)" and st.session_state["rola"] == "Administrator":
     st.subheader("Zarządzanie biletami")
     df_bilety_db = pd.read_sql("SELECT id as [ID], kod_biletu as [Kod], rodzaj as [Oferta], data_waznosci as [Ważny do], status as [Status] FROM bilety ORDER BY id DESC", conn)
     st.dataframe(df_bilety_db, use_container_width=True, hide_index=True)
