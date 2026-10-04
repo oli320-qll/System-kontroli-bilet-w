@@ -240,7 +240,7 @@ if wybrane_menu == "🎫 Bilety":
     pod_menu = st.selectbox("Wybierz operację biletową:", [
         "🔍 Kontrola (Skaner kodów)", 
         "➕ Nowy bilet (Sprzedaż)", 
-        "⚠️️ Nowe wezwanie (Mandat za brak biletu)", 
+        "⚠ Nowe wezwanie (Mandat za brak biletu)", 
         "💳 Opłać mandat / Kara"
     ])
     
@@ -447,7 +447,7 @@ elif wybrane_menu == "👥 Użytkownicy" and st.session_state["rola"] == "Admini
             nowy_login = st.text_input("Login systemowy:")
             nowe_haslo = st.text_input("Hasło / PIN:", type="password")
             nowe_imie = st.text_input("Imię i Nazwisko / Identyfikator (np. Jan Kowalski ID: 105):")
-            nowa_rola = st.selectbox("Rola w systemigen:", ["Kontroler", "Administrator"])
+            nowa_rola = st.selectbox("Rola w systemie:", ["Kontroler", "Administrator"])
             
             if st.form_submit_button("Utwórz konto pracownika", type="primary"):
                 if nowy_login.strip() and nowe_haslo.strip() and nowe_imie.strip():
@@ -484,20 +484,18 @@ elif wybrane_menu == "👥 Użytkownicy" and st.session_state["rola"] == "Admini
 
 # ================= 7. BAZA BILETÓW (TYLKO ADMIN / KIEROWNIK) =================
 elif wybrane_menu == "🎟️ Baza Biletów (Admin)" and st.session_state["rola"] == "Administrator":
-    st.subheader("🎟️️ Zarządzanie pulą biletów w systemie centralnym")
+    st.subheader("🎟️ Zarządzanie pulą biletów w systemie centralnym")
     
     tab_b_lista, tab_b_dodaj = st.tabs(["📋 Aktualne bilety w bazie", "➕ Dodaj nowy bilet"])
     
     with tab_b_lista:
-        df_bilety_ db = pd.read_sql("SELECT id as [ID], kod_biletu as [Kod Biletu], rodzaj as [Rodzaj Oferty], data_waznosci as [Ważny do], status as [Status] FROM bilety ORDER BY id DESC", conn)
+        df_bilety_db = pd.read_sql("SELECT id as [ID], kod_biletu as [Kod Biletu], rodzaj as [Rodzaj Oferty], data_waznosci as [Ważny do], status as [Status] FROM bilety ORDER BY id DESC", conn)
         st.dataframe(df_bilety_db, use_container_width=True, hide_index=True)
         
     with tab_b_dodaj:
         with st.form("form_dodaj_bilet_admin"):
             st.write("### Dodawanie nowego biletu do systemu")
             
-            # Automatyczna generacja unikalnego kodu biletu
-            domyslny_kod = f"KM-{datetime.now().strftime('%Y%m%d')}-{range(100,999)}" # lub prosty generator
             kod_b_input = st.text_input("Kod biletu (np. numer kodu / QR):", value=f"KM-2026-{datetime.now().strftime('%H%M%S')}")
             rodzaj_b_input = st.selectbox("Rodzaj / Oferta biletu:", [
                 "Bilet jednorazowy normalny",
