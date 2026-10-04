@@ -318,7 +318,7 @@ if wybrane_menu == "🎫 Bilety":
         with st.form("form_sprzedaz"):
             st.write("### Wystawienie biletu w pociągu")
             trasa = st.text_input("Relacja (np. Warszawa Wsch. -> Pruszków):")
-            rodzaj_biletu = st.text_input("Rodzaj / Oferta biletu (wpisz własną nazwę):", value="Bilet jednorazowy normalny")
+            rodzaj_biletu = st.selectbox("Oferta:", ["Bilet jednorazowy normalny", "Bilet jednorazowy ulgowy (50%)", "Bilet taryfowy strefowy"])
             cena_biletu = st.number_input("Należność w zł:", value=15.50, step=0.50)
             
             if st.form_submit_button("Wydrukuj bilet / Zatwierdź"):
@@ -332,7 +332,7 @@ if wybrane_menu == "🎫 Bilety":
                     st.error("Podaj relację podróży.")
 
     elif pod_menu == "⚠️ Nowe wezwanie (Mandat za brak biletu)":
-        st.write("### 🚨 Wystawianie wezwania do zapłaty (Opłata dodatkowa)")
+        st.write("### 🚨 Wystawianie wezwania do zapłaty (Opłata dodatková)")
         st.info("Uzupełnij dane pasażera, który podróżuje bez ważnego biletu lub dokumentu poświadczającego uprawnienia do ulgi.")
 
         with st.form("form_mandat_oficjalny"):
@@ -340,7 +340,12 @@ if wybrane_menu == "🎫 Bilety":
             pasażer_dok = st.text_input("Seria i numer dokumentu tożsamości / PESEL:")
             pasażer_adres = st.text_input("Adres zamieszkania pasażera:")
             pociag_m = st.selectbox("Pociąg / Relacja:", ["KM 12105 (Warszawa W-wa -> Radom)", "KM 21230 (Warszawa Włochy -> Siedlce)", "KM 31402 (Modlin -> Warszawa Centralna)"])
-            powod_wystawienia = st.text_input("Powód nałożenia opłaty (wpisz własną treść):", value="Brak ważnego biletu na przejazd")
+            powod_wystawienia = st.selectbox("Powód nałożenia opłaty:", [
+                "Brak ważnego biletu na przejazd",
+                "Brak dokumentu poświadczającego uprawnienie do ulgi",
+                "Naruszenie przepisów porządkowych (samowolne przerwanie podróży)",
+                "Przejazd bez ważnego biletu z winy pasażera"
+            ])
             kwota_m = st.number_input("Kwota opłaty dodatkowej (zł):", value=250.0, step=10.0)
             
             btn_wys_mandat = st.form_submit_button("🚨 Wystaw oficjalne wezwanie do zapłaty", type="primary")
@@ -423,7 +428,7 @@ elif wybrane_menu == "🔧 Narzędzia":
     st.subheader("Narzędzia serwisowe terminala")
     if st.button("🔄 Synchronizuj bazę danych z dyspozytornią"):
         st.success("Synchronizacja zakończona pomyślnie. Wszystkie dane zapisane.")
-    if st.button("🖨️️ Test drukarki termicznej"):
+    if st.button("🖨️ Test drukarki termicznej"):
         st.toast("Wydruk testowy powiódł się!", icon="🖨️")
 
 # ================= 6. UŻYTKOWNICY (TYLKO ADMIN) =================
@@ -468,7 +473,7 @@ elif wybrane_menu == "👥 Użytkownicy" and st.session_state["rola"] == "Admini
                     c.execute("SELECT login FROM uzytkownicy WHERE id = ?", (wybrany_u_id,))
                     u_to_del = c.fetchone()[0]
                     if u_to_del == "admin" and st.session_state["user"] == "Kierownik Pociągu":
-                        st.error("Ne możesz usunąć głównego konta administratora systemu!")
+                        st.error("Nie możesz usunąć głównego konta administratora systemu!")
                     else:
                         c.execute("DELETE FROM uzytkownicy WHERE id = ?", (wybrany_u_id,))
                         conn.commit()
@@ -479,7 +484,7 @@ elif wybrane_menu == "👥 Użytkownicy" and st.session_state["rola"] == "Admini
 
 # ================= 7. BAZA BILETÓW (TYLKO ADMIN / KIEROWNIK) =================
 elif wybrane_menu == "🎟️ Baza Biletów (Admin)" and st.session_state["rola"] == "Administrator":
-    st.subheader("🎟 Zarządzanie pulą biletów w systemie centralnym")
+    st.subheader("🎟️ Zarządzanie pulą biletów w systemie centralnym")
     
     tab_b_lista, tab_b_dodaj = st.tabs(["📋 Aktualne bilety w bazie", "➕ Dodaj nowy bilet"])
     
@@ -491,11 +496,17 @@ elif wybrane_menu == "🎟️ Baza Biletów (Admin)" and st.session_state["rola"
         with st.form("form_dodaj_bilet_admin"):
             st.write("### Dodawanie nowego biletu do systemu")
             
-            # Kod biletu podawany w pełni ręcznie (taki jaki zeskanujesz / wpiszesz)
+            # Kod biletu podawany ręcznie (dokładnie taki, jaki zeskanujesz / chcesz nadać)
             kod_b_input = st.text_input("Kod biletu (wpisz lub wklej dokładny kod/numer):", placeholder="np. 4355 lub KM-2026-XYZ")
             
-            # Rodzaj biletu w pełni jako pole tekstowe, bez narzucania gotowców
-            rodzaj_b_input = st.text_input("Rodzaj / Oferta biletu (wpisz własną nazwę):", placeholder="np. Normalny jednorazowy, Dobowy itp.")
+            # Przywrócone menu rozwijane z rodzajami biletów (selectbox)
+            rodzaj_b_input = st.selectbox("Rodzaj / Oferta biletu:", [
+                "Bilet jednorazowy normalny",
+                "Bilet jednorazowy ulgowy (50%)",
+                "Bilet miesięczny imienny",
+                "Bilet sieciowy dobowy",
+                "Bilet weekendowy KM"
+            ])
             
             st.markdown("**Okres ważności biletu:**")
             col_d1, col_d2 = st.columns(2)
@@ -507,14 +518,14 @@ elif wybrane_menu == "🎟️ Baza Biletów (Admin)" and st.session_state["rola"
             status_b_input = st.selectbox("Początkowy status:", ["Aktywny", "Skasowany"])
             
             if st.form_submit_button("💾 Zapisz bilet w bazie", type="primary"):
-                if kod_b_input.strip() and rodzaj_b_input.strip():
+                if kod_b_input.strip():
                     pelna_data_waznosci = f"{data_w_input.strftime('%Y-%m-%d')} {czas_w_input.strftime('%H:%M')}"
                     try:
                         c.execute("INSERT INTO bilety (kod_biletu, rodzaj, data_waznosci, status) VALUES (?, ?, ?, ?)",
-                                  (kod_b_input.strip(), rodzaj_b_input.strip(), pelna_data_waznosci, status_b_input))
+                                  (kod_b_input.strip(), rodzaj_b_input, pelna_data_waznosci, status_b_input))
                         conn.commit()
-                        st.success(f"Pomyślnie dodano bilet **{kod_b_input.strip()}** ({rodzaj_b_input.strip()}) ważny do **{pelna_data_waznosci}**!")
+                        st.success(f"Pomyślnie dodano bilet o kodzie **{kod_b_input.strip()}** ({rodzaj_b_input}) ważny do **{pelna_data_waznosci}**!")
                     except sqlite3.IntegrityError:
                         st.error("Bilet o takim kodzie już istnieje w bazie!")
                 else:
-                    st.error("Wypełnij kod biletu oraz rodzaj/ofertę.")
+                    st.error("Podaj kod biletu.")
