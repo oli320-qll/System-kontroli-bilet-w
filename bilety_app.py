@@ -331,7 +331,7 @@ if wybrane_menu == "🎫 Bilety":
                 else:
                     st.error("Podaj relację podróży.")
 
-    elif pod_menu == "⚠️ Nowe wezwanie (Mandat za brak biletu)":
+    elif pod_menu == "⚠ Nowe wezwanie (Mandat za brak biletu)":
         st.write("### 🚨 Wystawianie wezwania do zapłaty (Opłata dodatková)")
         st.info("Uzupełnij dane pasażera, który podróżuje bez ważnego biletu lub dokumentu poświadczającego uprawnienia do ulgi.")
 
@@ -496,10 +496,8 @@ elif wybrane_menu == "🎟️ Baza Biletów (Admin)" and st.session_state["rola"
         with st.form("form_dodaj_bilet_admin"):
             st.write("### Dodawanie nowego biletu do systemu")
             
-            # Kod biletu podawany ręcznie (dokładnie taki, jaki zeskanujesz / chcesz nadać)
+            # Własny kod biletu wpisywany ręcznie/ze skanera
             kod_b_input = st.text_input("Kod biletu (wpisz lub wklej dokładny kod/numer):", placeholder="np. 4355 lub KM-2026-XYZ")
-            
-            # Przywrócone menu rozwijane z rodzajami biletów (selectbox)
             rodzaj_b_input = st.selectbox("Rodzaj / Oferta biletu:", [
                 "Bilet jednorazowy normalny",
                 "Bilet jednorazowy ulgowy (50%)",
