@@ -228,13 +228,11 @@ if not st.session_state["zalogowany"]:
 
 # ================= SPECJALNY TRYB: KIOSK =================
 if st.session_state["rola"] == "Kiosk":
-    # Górny pasek z przyciskiem szybkiego odświeżania stanu z bazy
     col_k_title, col_k_btn = st.columns([4, 1])
     with col_k_btn:
         if st.button("🔄 Odśwież stan"):
             st.rerun()
 
-    # Ekran blokady z dynamicznym zegarem
     if czy_kiosk_zablokowany():
         components.html("""
             <div style="margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
