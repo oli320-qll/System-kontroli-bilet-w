@@ -140,26 +140,8 @@ try:
 except sqlite3.OperationalError:
     pass
 
-# Dane startowe
-c.execute("SELECT COUNT(*) FROM bilety")
-if c.fetchone()[0] == 0:
-    p_przyszlosc = (datetime.now() + timedelta(days=30)).strftime("%Y-%m-%d %H:%M")
-    p_przeszłość = (datetime.now() - timedelta(days=5)).strftime("%Y-%m-%d %H:%M")
-    c.executemany("INSERT INTO bilety (kod_biletu, rodzaj, data_waznosci, status) VALUES (?, ?, ?, ?)", [
-        ("KM-2026-001", "Normalny jednorazowy", p_przyszlosc, "Aktywny"),
-        ("KM-2026-002", "Ulgowy 30-dniowy", p_przyszlosc, "Aktywny"),
-        ("KM-2026-003", "Normalny dobowy", p_przeszłość, "Aktywny"),
-        ("KM-2026-004", "Grupowy weekendowy", p_przyszlosc, "Skasowany")
-    ])
-    conn.commit()
-
-c.execute("SELECT COUNT(*) FROM uzytkownicy")
-if c.fetchone()[0] == 0:
-    c.executemany("INSERT INTO uzytkownicy (login, haslo, rola, imie) VALUES (?, ?, ?, ?)", [
-        ("admin", "admin123", "Administrator", "Kierownik pociągu"),
-        ("konduktor", "123", "Kontroler", "Jan Konduktor (ID: 104)")
-    ])
-    conn.commit()
+# USUNIĘTO SZTUCZNE DANE TESTOWE – baza jest teraz czysta na start.
+# Możesz dodawać użytkowników, bilety i mandaty z poziomu aplikacji lub własnych skryptów.
 
 # Stan sesji
 if "zalogowany" not in st.session_state:
@@ -191,6 +173,13 @@ if not st.session_state["zalogowany"]:
             st.write("### Logowanie do urządzenia")
             l_in = st.text_input("Identyfikator / Login:")
             h_in = st.text_input("Kod PIN / Hasło:", type="password")
+            
+            # Dodanie domyślnego konta serwisowego, aby w ogóle dało się zalogować przy pustej bazie
+            c.execute("SELECT COUNT(*) FROM uzytkownicy")
+            if c.fetchone()[0] == 0:
+                c.execute("INSERT INTO uzytkownicy (login, haslo, rola, imie) VALUES (?, ?, ?, ?)", ("konduktor", "123", "Kontroler", "Jan Konduktor (ID: 104)"))
+                conn.commit()
+
             if st.form_submit_button("Zaloguj do pociągu"):
                 c.execute("SELECT rola, imie FROM uzytkownicy WHERE login = ? AND haslo = ?", (l_in.strip(), h_in))
                 res = c.fetchone()
@@ -201,10 +190,10 @@ if not st.session_state["zalogowany"]:
                     st.rerun()
                 else:
                     st.error("Błędny login lub PIN.")
-        st.info("💡 **Dane testowe:** `konduktor` / `123`")
+        st.info("💡 **Domyślne dane logowania:** `konduktor` / `123`")
     st.stop()
 
-# ================= MENU BOCZNE (LEWA STRONAC) =================
+# ================= MENU BOCZNE (LEWA STRONA) =================
 with st.sidebar:
     st.markdown("""
         <div style="text-align: center; padding: 10px 0 20px 0;">
@@ -309,16 +298,6 @@ if wybrane_menu == "🎫 Bilety":
                 else:
                     st.warning("Wpisz lub zeskanuj kod biletu.")
 
-        st.markdown("---")
-        st.write("🧪 **Szybki symulator skanera:**")
-        ts1, ts2 = st.columns(2)
-        with ts1:
-            if st.button("Skanuj: KM-2026-001 (Ważny)"):
-                st.toast("Wpisz w pole: KM-2026-001")
-        with ts2:
-            if st.button("Skanuj: KM-2026-003 (Przeterminowany)"):
-                st.toast("Wpisz w pole: KM-2026-003")
-
     elif pod_menu == "➕ Nowy bilet (Sprzedaż)":
         with st.form("form_sprzedaz"):
             st.write("### Wystawienie biletu w pociągu")
@@ -337,7 +316,7 @@ if wybrane_menu == "🎫 Bilety":
                     st.error("Podaj relację podróży.")
 
     elif pod_menu == "⚠️ Nowe wezwanie (Mandat za brak biletu)":
-        st.write("### 🚨 Wystawianie wezwania do zapłaty (Opłata dodatkowa)")
+        st.write("### 🚨 Wystawianie wezwania do zapłaty (Opłata dodatková)")
         st.info("Uzupełnij dane pasażera, który podróżuje bez ważnego biletu lub dokumentu poświadczającego uprawnienia do ulgi.")
 
         with st.form("form_mandat_oficjalny"):
@@ -367,7 +346,6 @@ if wybrane_menu == "🎫 Bilety":
                     
                     st.success(f"✅ Wystawiono wezwanie **{nr_wezwania}** na kwotę **{kwota_m} zł** dla pasażera: {pasażer_imie}!")
                     
-                    # Wydruk / Podgląd dokumentu mandatu na ekranie terminala
                     st.markdown(f"""
                         <div class="mandat-box">
                             <h3 style="color: #f97316; margin-top:0; text-align:center;">KOLEJE MAZOWIECKIE - SP Z O.O.</h3>
