@@ -112,7 +112,29 @@ c.execute("""
         imie TEXT
     )
 """)
+
+# Tabela na ustawienia globalne (np. blokada kiosku)
+c.execute("""
+    CREATE TABLE IF NOT EXISTS ustawienia (
+        klucz TEXT PRIMARY KEY,
+        wartosc TEXT
+    )
+""")
 conn.commit()
+
+# Ustawienie domyślne dla blokady, jeśli nie istnieje
+c.execute("INSERT OR IGNORE INTO ustawienia (klucz, wartosc) VALUES ('kiosk_zablokowany', 'False')")
+conn.commit()
+
+# Funkcje pomocnicze do odczytu/zapisu stanu blokady z bazy danych
+def czy_kiosk_zablokowany():
+    c.execute("SELECT wartosc FROM ustawienia WHERE klucz = 'kiosk_zablokowany'")
+    res = c.fetchone()
+    return res[0] == 'True' if res else False
+
+def ustaw_blokade_kiosku(status: bool):
+    c.execute("UPDATE ustawienia SET wartosc = ? WHERE klucz = 'kiosk_zablokowany'", (str(status),))
+    conn.commit()
 
 # Bezpieczna aktualizacja tabeli dla opłat
 try:
@@ -138,10 +160,6 @@ if "user" not in st.session_state:
     st.session_state["user"] = ""
 if "rola" not in st.session_state:
     st.session_state["rola"] = ""
-
-# Stan blokady kiosku w pamięci globalnej aplikacji
-if "kiosk_zablokowany" not in st.session_state:
-    st.session_state["kiosk_zablokowany"] = False
 
 # Stany dla kiosku
 if "kiosk_krok" not in st.session_state:
@@ -179,7 +197,7 @@ if not st.session_state["zalogowany"]:
             
             btn_zaloguj = st.form_submit_button("Uruchom terminal")
             if btn_zaloguj:
-                if l_in.strip() == "kiosk" and st.session_state["kiosk_zablokowany"]:
+                if l_in.strip() == "kiosk" and czy_kiosk_zablokowany():
                     st.error("🚫 Ten kiosk/kasownik został zablokowany przez kontrolera/administratora! Skontaktuj się z obsługą pociągu.")
                 else:
                     c.execute("SELECT rola, imie FROM uzytkownicy WHERE login = ? AND haslo = ?", (l_in.strip(), h_in))
@@ -197,8 +215,9 @@ if not st.session_state["zalogowany"]:
 
 # ================= SPECJALNY TRYB: KIOSK (2 RZĘDY PO 3 KAFELKI) =================
 if st.session_state["rola"] == "Kiosk":
-    if st.session_state["kiosk_zablokowany"]:
-        st.error("🚫 Kiosk został zablokowany w trakcie pracy przez obsługę pociągu.")
+    # Sprawdzamy stan blokady z bazy przy każdym odświeżeniu/interakcji w kiosku
+    if czy_kiosk_zablokowany():
+        st.error("🚫 Kiosk został zablokowany w trakcie pracy przez obsługę pociągu. Sprzedaż biletów jest niemożliwa.")
         if st.button("Wróć do ekranu logowania"):
             st.session_state["zalogowany"] = False
             st.rerun()
@@ -340,7 +359,7 @@ with st.sidebar:
     st.markdown(f"**Rola:** `{st.session_state['rola']}`")
     st.markdown("---")
     
-    opcje_menu = ["🎫 Bilety", "📋 Zadania", "ℹ️️ Informacje", "📊 Raporty", "🔧 Narzędzia"]
+    opcje_menu = ["🎫 Bilety", "📋 Zadania", "ℹ️ Informacje", "📊 Raporty", "🔧 Narzędzia"]
     if st.session_state["rola"] == "Administrator":
         opcje_menu.append("👥 Użytkownicy")
         opcje_menu.append("🎟️ Baza Biletów (Admin)")
@@ -380,7 +399,7 @@ if wybrane_menu == "🎫 Bilety":
         with c_pociag:
             pociag_info = st.selectbox("Relacja / Pociąg:", ["KM 12105 (Warszawa W-wa -> Radom)", "KM 21230 (Warszawa Włochy -> Siedlce)", "KM 31402 (Modlin -> Warszawa Centralna)"])
         with c_mandat:
-            stawka_kary = st.number_input("Opłata dodatkowa (Mandat) w zł:", value=250.0, step=10.0)
+            stawka_kary = st.number_input("Opłata dodatková (Mandat) w zł:", value=250.0, step=10.0)
 
         c1, c2, c3 = st.columns(3)
         with c1:
@@ -426,7 +445,7 @@ if wybrane_menu == "🎫 Bilety":
                     if status_b == "Skasowany":
                         st.session_state["p_gapowiczow"] += 1
                         st.session_state["p_kary"] += stawka_kary
-                        st.warning(f"⚠️ **BILET JUŻ WYKORZYSTANY!**\nRodzaj: {rodzaj}. Mandat: **{stawka_kary} zł**.")
+                        st.warning(f"⚠️️ **BILET JUŻ WYKORZYSTANY!**\nRodzaj: {rodzaj}. Mandat: **{stawka_kary} zł**.")
                         c.execute("INSERT INTO historia_kontroli (kod_biletu, wynik, komentarz, data_kontroli, kontroler, linia, kara, status_oplaty) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                                   (kod_czysty, "Skasowany wcześniej", rodzaj, str(teraz), st.session_state["user"], pociag_info, stawka_kary, "Nieopłacony"))
                         conn.commit()
@@ -523,20 +542,21 @@ elif wybrane_menu == "🔧 Narzędzia":
     st.subheader("🛠️ Narzędzia serwisowe i kontrola urządzeń")
     
     st.write("### Zarządzanie stacjonarnym kasownikiem / kioskiem")
-    stan_akt = "🔴 ZABLOKOWANY" if st.session_state["kiosk_zablokowany"] else "🟢 AKTYWNY (Dostępny dla pasażerów)"
+    zablokowany = czy_kiosk_zablokowany()
+    stan_akt = "🔴 ZABLOKOWANY" if zablokowany else "🟢 AKTYWNY (Dostępny dla pasażerów)"
     st.info(f"Aktualny status kasownika w pociągu: {stan_akt}")
 
     c_abl, c_odbl = st.columns(2)
     with c_abl:
-        if not st.session_state["kiosk_zablokowany"]:
+        if not zablokowany:
             if st.button("🔒 Zablokuj kasownik / kiosk"):
-                st.session_state["kiosk_zablokowany"] = True
-                st.success("Kasownik został zablokowany! Pasażerowie nie mogą kupować biletów.")
+                ustaw_blokade_kiosku(True)
+                st.success("Kasownik został zablokowany w bazie! Pasażerowie nie mogą kupować biletów.")
                 st.rerun()
     with c_odbl:
-        if st.session_state["kiosk_zablokowany"]:
+        if zablokowany:
             if st.button("🔓 Odblokuj kasownik / kiosk"):
-                st.session_state["kiosk_zablokowany"] = False
+                ustaw_blokade_kiosku(False)
                 st.success("Kasownik został odblokowany i działa poprawnie.")
                 st.rerun()
 
