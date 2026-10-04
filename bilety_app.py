@@ -149,7 +149,7 @@ if c.fetchone()[0] == 0:
     ])
     conn.commit()
 
-# ================= TRWAŁY STAN SESJI (Zapobiega wylogowywaniu) =================
+# ================= TRWAŁY STAN SESJI =================
 if "zalogowany" not in st.session_state:
     st.session_state["zalogowany"] = False
 if "user" not in st.session_state:
@@ -163,6 +163,9 @@ if "p_gapowiczow" not in st.session_state:
     st.session_state["p_gapowiczow"] = 0
 if "p_kary" not in st.session_state:
     st.session_state["p_kary"] = 0.0
+
+if "skaner_input" not in st.session_state:
+    st.session_state["skaner_input"] = ""
 
 # ================= LOGOWANIE =================
 if not st.session_state["zalogowany"]:
@@ -257,53 +260,58 @@ if wybrane_menu == "🎫 Bilety":
 
         st.markdown("<br>", unsafe_allow_html=True)
         st.write("### Skanowanie kodu biletowego")
-        st.info("💡 *Skaner lub czytnik automatycznie zatwierdza kod. Pole wyczyszczone zostanie samoczynnie po weryfikacji.*")
+        
+        # Układ z polem wprowadzania oraz przyciskiem czyszczenia [X] obok
+        col_skan_1, col_skan_2 = st.columns([4, 1])
+        with col_skan_1:
+            kod_wejscie = st.text_input("Zeskanuj kod kreskowy / QR:", key="skaner_input", placeholder="np. KM-2026-001")
+        with col_skan_2:
+            st.markdown("<br>", unsafe_allow_html=True) 
+            if st.button("❌ Wyczyść"):
+                st.session_state["skaner_input"] = ""
+                st.rerun()
 
-        with st.form("form_skaner_km", clear_on_submit=True):
-            kod_wejscie = st.text_input("Zeskanuj kod kreskowy / QR:", placeholder="np. KM-2026-001")
-            btn_weryfikuj = st.form_submit_button("Weryfikuj uprawnienia do przejazdu")
+        if st.button("Weryfikuj uprawnienia do przejazdu"):
+            if kod_wejscie:
+                kod_czysty = kod_wejscie.strip()
+                st.session_state["p_skontrolowanych"] += 1
+                teraz = datetime.now()
 
-            if btn_weryfikuj:
-                if kod_wejscie:
-                    kod_czysty = kod_wejscie.strip()
-                    st.session_state["p_skontrolowanych"] += 1
-                    teraz = datetime.now()
+                c.execute("SELECT id, rodzaj, data_waznosci, status FROM bilety WHERE kod_biletu = ?", (kod_czysty,))
+                bilet = c.fetchone()
 
-                    c.execute("SELECT id, rodzaj, data_waznosci, status FROM bilety WHERE kod_biletu = ?", (kod_czysty,))
-                    bilet = c.fetchone()
+                if not bilet:
+                    st.session_state["p_gapowiczow"] += 1
+                    st.session_state["p_kary"] += stawka_kary
+                    st.error(f"❌ **BRAK WAŻNEGO BILETU!**\nKod **{kod_czysty}** nie widnieje w systemie. Wystawiono opłatę dodatkową: **{stawka_kary} zł**.")
+                    c.execute("INSERT INTO historia_kontroli (kod_biletu, wynik, komentarz, data_kontroli, kontroler, linia, kara, status_oplaty) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                              (kod_czysty, "Brak w bazie (Gapowicz)", "Brak dokumentu uprawniającego", str(teraz), st.session_state["user"], pociag_info, stawka_kary, "Nieopłacony"))
+                    conn.commit()
+                else:
+                    b_id, rodzaj, data_wazn_str, status_b = bilet
+                    data_waznosci = datetime.strptime(data_wazn_str, "%Y-%m-%d %H:%M")
 
-                    if not bilet:
+                    if status_b == "Skasowany":
                         st.session_state["p_gapowiczow"] += 1
                         st.session_state["p_kary"] += stawka_kary
-                        st.error(f"❌ **BRAK WAŻNEGO BILETU!**\nKod **{kod_czysty}** nie widnieje w systemie. Wystawiono opłatę dodatkową: **{stawka_kary} zł**.")
+                        st.warning(f"⚠️ **BILET JUŻ WYKORZYSTANY!**\nRodzaj: {rodzaj}. Nałożono mandat: **{stawka_kary} zł**.")
                         c.execute("INSERT INTO historia_kontroli (kod_biletu, wynik, komentarz, data_kontroli, kontroler, linia, kara, status_oplaty) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                                  (kod_czysty, "Brak w bazie (Gapowicz)", "Brak dokumentu uprawniającego", str(teraz), st.session_state["user"], pociag_info, stawka_kary, "Nieopłacony"))
+                                  (kod_czysty, "Skasowany wcześniej", rodzaj, str(teraz), st.session_state["user"], pociag_info, stawka_kary, "Nieopłacony"))
+                        conn.commit()
+                    elif data_waznosci < teraz:
+                        st.session_state["p_gapowiczow"] += 1
+                        st.session_state["p_kary"] += stawka_kary
+                        st.error(f"⏰ **BILET PRZETERMINOWANY!**\nWażność minęła: {data_wazn_str}. Mandat: **{stawka_kary} zł**.")
+                        c.execute("INSERT INTO historia_kontroli (kod_biletu, wynik, komentarz, data_kontroli, kontroler, linia, kara, status_oplaty) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                                  (kod_czysty, "Przeterminowany", data_wazn_str, str(teraz), st.session_state["user"], pociag_info, stawka_kary, "Nieopłacony"))
                         conn.commit()
                     else:
-                        b_id, rodzaj, data_wazn_str, status_b = bilet
-                        data_waznosci = datetime.strptime(data_wazn_str, "%Y-%m-%d %H:%M")
-
-                        if status_b == "Skasowany":
-                            st.session_state["p_gapowiczow"] += 1
-                            st.session_state["p_kary"] += stawka_kary
-                            st.warning(f"⚠️ **BILET JUŻ WYKORZYSTANY!**\nRodzaj: {rodzaj}. Nałożono mandat: **{stawka_kary} zł**.")
-                            c.execute("INSERT INTO historia_kontroli (kod_biletu, wynik, komentarz, data_kontroli, kontroler, linia, kara, status_oplaty) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                                      (kod_czysty, "Skasowany wcześniej", rodzaj, str(teraz), st.session_state["user"], pociag_info, stawka_kary, "Nieopłacony"))
-                            conn.commit()
-                        elif data_waznosci < teraz:
-                            st.session_state["p_gapowiczow"] += 1
-                            st.session_state["p_kary"] += stawka_kary
-                            st.error(f"⏰ **BILET PRZETERMINOWANY!**\nWażność minęła: {data_wazn_str}. Mandat: **{stawka_kary} zł**.")
-                            c.execute("INSERT INTO historia_kontroli (kod_biletu, wynik, komentarz, data_kontroli, kontroler, linia, kara, status_oplaty) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                                      (kod_czysty, "Przeterminowany", data_wazn_str, str(teraz), st.session_state["user"], pociag_info, stawka_kary, "Nieopłacony"))
-                            conn.commit()
-                        else:
-                            st.success(f"✅ **BILET PRAWIDŁOWY!**\nRodzaj: **{rodzaj}**\nWażny do: {data_wazn_str}")
-                            c.execute("INSERT INTO historia_kontroli (kod_biletu, wynik, komentarz, data_kontroli, kontroler, linia, kara, status_oplaty) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                                      (kod_czysty, "Prawidłowy", rodzaj, str(teraz), st.session_state["user"], pociag_info, 0.0, "Opłacony"))
-                            conn.commit()
-                else:
-                    st.warning("Wpisz lub zeskanuj kod biletu.")
+                        st.success(f"✅ **BILET PRAWIDŁOWY!**\nRodzaj: **{rodzaj}**\nWażny do: {data_wazn_str}")
+                        c.execute("INSERT INTO historia_kontroli (kod_biletu, wynik, komentarz, data_kontroli, kontroler, linia, kara, status_oplaty) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                                  (kod_czysty, "Prawidłowy", rodzaj, str(teraz), st.session_state["user"], pociag_info, 0.0, "Opłacony"))
+                        conn.commit()
+            else:
+                st.warning("Wpisz lub zeskanuj kod biletu.")
 
     elif pod_menu == "➕ Nowy bilet (Sprzedaż)":
         with st.form("form_sprzedaz"):
@@ -419,7 +427,7 @@ elif wybrane_menu == "🔧 Narzędzia":
     st.subheader("Narzędzia serwisowe terminala")
     if st.button("🔄 Synchronizuj bazę danych z dyspozytornią"):
         st.success("Synchronizacja zakończona pomyślnie. Wszystkie dane zapisane.")
-    if st.button("🖨 Test drukarki termicznej"):
+    if st.button("🖨️ Test drukarki termicznej"):
         st.toast("Wydruk testowy powiódł się!", icon="🖨️")
 
 # ================= 6. UŻYTKOWNICY =================
