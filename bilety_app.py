@@ -212,6 +212,7 @@ with st.sidebar:
     opcje_menu = ["🎫 Bilety", "📋 Zadania", "ℹ️ Informacje", "📊 Raporty", "🔧 Narzędzia"]
     if st.session_state["rola"] == "Administrator":
         opcje_menu.append("👥 Użytkownicy")
+        opcje_menu.append("🎟️ Baza Biletów (Admin)")
 
     wybrane_menu = st.radio(
         "Nawigacja:",
@@ -261,7 +262,6 @@ if wybrane_menu == "🎫 Bilety":
         st.markdown("<br>", unsafe_allow_html=True)
         st.write("### Skanowanie kodu biletowego")
         
-        # Funkcja callback czyszcząca pole input przed ponownym wyrenderowaniem
         def wyczysc_pole_skanera():
             st.session_state["skaner_input"] = ""
 
@@ -431,7 +431,7 @@ elif wybrane_menu == "🔧 Narzędzia":
     if st.button("🖨️ Test drukarki termicznej"):
         st.toast("Wydruk testowy powiódł się!", icon="🖨️")
 
-# ================= 6. UŻYTKOWNICY =================
+# ================= 6. UŻYTKOWNICY (TYLKO ADMIN) =================
 elif wybrane_menu == "👥 Użytkownicy" and st.session_state["rola"] == "Administrator":
     st.subheader("👥 Zarządzanie użytkownikami systemowymi")
     
@@ -447,7 +447,7 @@ elif wybrane_menu == "👥 Użytkownicy" and st.session_state["rola"] == "Admini
             nowy_login = st.text_input("Login systemowy:")
             nowe_haslo = st.text_input("Hasło / PIN:", type="password")
             nowe_imie = st.text_input("Imię i Nazwisko / Identyfikator (np. Jan Kowalski ID: 105):")
-            nowa_rola = st.selectbox("Rola w systemie:", ["Kontroler", "Administrator"])
+            nowa_rola = st.selectbox("Rola w systemigen:", ["Kontroler", "Administrator"])
             
             if st.form_submit_button("Utwórz konto pracownika", type="primary"):
                 if nowy_login.strip() and nowe_haslo.strip() and nowe_imie.strip():
@@ -481,3 +481,50 @@ elif wybrane_menu == "👥 Użytkownicy" and st.session_state["rola"] == "Admini
                         st.rerun()
             else:
                 st.info("Brak użytkowników w bazie.")
+
+# ================= 7. BAZA BILETÓW (TYLKO ADMIN / KIEROWNIK) =================
+elif wybrane_menu == "🎟️ Baza Biletów (Admin)" and st.session_state["rola"] == "Administrator":
+    st.subheader("🎟️️ Zarządzanie pulą biletów w systemie centralnym")
+    
+    tab_b_lista, tab_b_dodaj = st.tabs(["📋 Aktualne bilety w bazie", "➕ Dodaj nowy bilet"])
+    
+    with tab_b_lista:
+        df_bilety_ db = pd.read_sql("SELECT id as [ID], kod_biletu as [Kod Biletu], rodzaj as [Rodzaj Oferty], data_waznosci as [Ważny do], status as [Status] FROM bilety ORDER BY id DESC", conn)
+        st.dataframe(df_bilety_db, use_container_width=True, hide_index=True)
+        
+    with tab_b_dodaj:
+        with st.form("form_dodaj_bilet_admin"):
+            st.write("### Dodawanie nowego biletu do systemu")
+            
+            # Automatyczna generacja unikalnego kodu biletu
+            domyslny_kod = f"KM-{datetime.now().strftime('%Y%m%d')}-{range(100,999)}" # lub prosty generator
+            kod_b_input = st.text_input("Kod biletu (np. numer kodu / QR):", value=f"KM-2026-{datetime.now().strftime('%H%M%S')}")
+            rodzaj_b_input = st.selectbox("Rodzaj / Oferta biletu:", [
+                "Bilet jednorazowy normalny",
+                "Bilet jednorazowy ulgowy (50%)",
+                "Bilet miesięczny imienny",
+                "Bilet sieciowy dobowy",
+                "Bilet weekendowy KM"
+            ])
+            
+            st.markdown("**Okres ważności biletu:**")
+            col_d1, col_d2 = st.columns(2)
+            with col_d1:
+                data_w_input = st.date_input("Data ważności (dzień):", value=datetime.now() + timedelta(days=1))
+            with col_d2:
+                czas_w_input = st.time_input("Godzina ważności:", value=datetime.now().time())
+                
+            status_b_input = st.selectbox("Początkowy status:", ["Aktywny", "Skasowany"])
+            
+            if st.form_submit_button("💾 Zapisz bilet w bazie", type="primary"):
+                if kod_b_input.strip():
+                    pelna_data_waznosci = f"{data_w_input.strftime('%Y-%m-%d')} {czas_w_input.strftime('%H:%M')}"
+                    try:
+                        c.execute("INSERT INTO bilety (kod_biletu, rodzaj, data_waznosci, status) VALUES (?, ?, ?, ?)",
+                                  (kod_b_input.strip(), rodzaj_b_input, pelna_data_waznosci, status_b_input))
+                        conn.commit()
+                        st.success(f"Pomyślnie dodano bilet **{kod_b_input.strip()}** ważny do **{pelna_data_waznosci}**!")
+                    except sqlite3.IntegrityError:
+                        st.error("Bilet o takim kodzie już istnieje w bazie!")
+                else:
+                    st.error("Podaj kod biletu.")
