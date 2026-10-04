@@ -3,7 +3,7 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime, timedelta
 
-# Układ szeroki
+# Układ szeroki dla terminala konduktorskiego
 st.set_page_config(page_title="Terminal Konduktorski KM", layout="wide")
 
 # Zaawansowana stylizacja CSS (lewe menu + profesjonalna paleta barw KM)
@@ -69,6 +69,13 @@ st.markdown("""
         font-weight: 600;
         text-transform: uppercase;
     }
+    .mandat-box {
+        background-color: #1e293b;
+        border: 2px dashed #f97316;
+        padding: 20px;
+        border-radius: 8px;
+        margin-top: 15px;
+    }
     .stButton>button {
         width: 100%;
         padding: 12px;
@@ -126,12 +133,12 @@ c.execute("""
 """)
 conn.commit()
 
-# Sprawdzenie i aktualizacja kolumny status_oplaty w starszych bazach
+# Bezpieczna aktualizacja struktury tabeli dla opłat
 try:
     c.execute("ALTER TABLE historia_kontroli ADD COLUMN status_oplaty TEXT DEFAULT 'Nieopłacony'")
     conn.commit()
 except sqlite3.OperationalError:
-    pass # kolumna już istnieje
+    pass
 
 # Dane startowe
 c.execute("SELECT COUNT(*) FROM bilety")
@@ -154,7 +161,7 @@ if c.fetchone()[0] == 0:
     ])
     conn.commit()
 
-# Sesja
+# Stan sesji
 if "zalogowany" not in st.session_state:
     st.session_state["zalogowany"] = False
 if "user" not in st.session_state:
@@ -197,7 +204,7 @@ if not st.session_state["zalogowany"]:
         st.info("💡 **Dane testowe:** `konduktor` / `123`")
     st.stop()
 
-# ================= MENU BOCZNE PO LEWEJ STRONIE =================
+# ================= MENU BOCZNE (LEWA STRONAC) =================
 with st.sidebar:
     st.markdown("""
         <div style="text-align: center; padding: 10px 0 20px 0;">
@@ -233,7 +240,7 @@ if wybrane_menu == "🎫 Bilety":
     pod_menu = st.selectbox("Wybierz operację biletową:", [
         "🔍 Kontrola (Skaner kodów)", 
         "➕ Nowy bilet (Sprzedaż)", 
-        "⚠️️ Nowe wezwanie (Mandat)", 
+        "⚠️ Nowe wezwanie (Mandat za brak biletu)", 
         "💳 Opłać mandat / Kara"
     ])
     
@@ -244,7 +251,6 @@ if wybrane_menu == "🎫 Bilety":
         with c_mandat:
             stawka_kary = st.number_input("Opłata dodatkowa (Mandat) w zł:", value=250.0, step=10.0)
 
-        # Kafelki statystyk
         c1, c2, c3 = st.columns(3)
         with c1:
             st.markdown(f'<div class="card-metric"><h3>{st.session_state["p_skontrolowanych"]}</h3><p>Sprawdzone bilety</p></div>', unsafe_allow_html=True)
@@ -275,7 +281,7 @@ if wybrane_menu == "🎫 Bilety":
                         st.session_state["p_kary"] += stawka_kary
                         st.error(f"❌ **BRAK WAŻNEGO BILETU!**\nKod **{kod_czysty}** nie widnieje w systemie. Wystawiono opłatę dodatkową: **{stawka_kary} zł**.")
                         c.execute("INSERT INTO historia_kontroli (kod_biletu, wynik, komentarz, data_kontroli, kontroler, linia, kara, status_oplaty) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                                  (kod_czysty, "Brak w bazie (Gapowicz)", "Brak dokumentu", str(teraz), st.session_state["user"], pociag_info, stawka_kary, "Nieopłacony"))
+                                  (kod_czysty, "Brak w bazie (Gapowicz)", "Brak dokumentu uprawniającego", str(teraz), st.session_state["user"], pociag_info, stawka_kary, "Nieopłacony"))
                         conn.commit()
                     else:
                         b_id, rodzaj, data_wazn_str, status_b = bilet
@@ -330,41 +336,74 @@ if wybrane_menu == "🎫 Bilety":
                 else:
                     st.error("Podaj relację podróży.")
 
-    elif pod_menu == "⚠️ Nowe wezwanie (Mandat)":
-        with st.form("form_mandat"):
-            st.write("### Rejestracja opłaty dodatkowej (Mandat)")
-            pasażer_dane = st.text_input("Dane pasażera (Imię, Nazwisko, Nr dokumentu):")
-            kwota_m = st.number_input("Kwota kary w zł:", value=250.0)
-            pociag_m = st.selectbox("Pociąg:", ["KM 12105", "KM 21230", "KM 31402"])
+    elif pod_menu == "⚠️ Nowe wezwanie (Mandat za brak biletu)":
+        st.write("### 🚨 Wystawianie wezwania do zapłaty (Opłata dodatkowa)")
+        st.info("Uzupełnij dane pasażera, który podróżuje bez ważnego biletu lub dokumentu poświadczającego uprawnienia do ulgi.")
+
+        with st.form("form_mandat_oficjalny"):
+            pasażer_imie = st.text_input("Imię i Nazwisko pasażera:")
+            pasażer_dok = st.text_input("Seria i numer dokumentu tożsamości / PESEL:")
+            pasażer_adres = st.text_input("Adres zamieszkania pasażera:")
+            pociag_m = st.selectbox("Pociąg / Relacja:", ["KM 12105 (Warszawa W-wa -> Radom)", "KM 21230 (Warszawa Włochy -> Siedlce)", "KM 31402 (Modlin -> Warszawa Centralna)"])
+            powod_wystawienia = st.selectbox("Powód nałożenia opłaty:", [
+                "Brak ważnego biletu na przejazd",
+                "Brak dokumentu poświadczającego uprawnienie do ulgi",
+                "Naruszenie przepisów porządkowych (samowolne przerwanie podróży)",
+                "Przejazd bez ważnego biletu z winy pasażera"
+            ])
+            kwota_m = st.number_input("Kwota opłaty dodatkowej (zł):", value=250.0, step=10.0)
             
-            if st.form_submit_button("Wystaw i drukuj wezwanie"):
-                if pasażer_dane.strip():
+            btn_wys_mandat = st.form_submit_button("🚨 Wystaw oficjalne wezwanie do zapłaty", type="primary")
+
+            if btn_wys_mandat:
+                if pasażer_imie.strip() and pasażer_dok.strip():
                     teraz = datetime.now()
+                    nr_wezwania = f"KM-WEZ-{teraz.strftime('%Y%m%d-%H%M')}"
+                    komentarz_pelny = f"Pasażer: {pasażer_imie} | Dok: {pasażer_dok} | Adres: {pasażer_adres} | Powód: {powod_wystawienia}"
+                    
                     c.execute("INSERT INTO historia_kontroli (kod_biletu, wynik, komentarz, data_kontroli, kontroler, linia, kara, status_oplaty) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                              ("WEZWANIE-RĘCZNE", "Mandat ręczny", f"Pasażer: {pasażer_dane}", str(teraz), st.session_state["user"], pociag_m, kwota_m, "Nieopłacony"))
+                              (nr_wezwania, "Wezwanie do zapłaty", komentarz_pelny, str(teraz), st.session_state["user"], pociag_m, kwota_m, "Nieopłacony"))
                     conn.commit()
-                    st.success(f"Wystawiono wezwanie dla: {pasażer_dane} na kwotę {kwota_m} zł (Status: Nieopłacony).")
+                    
+                    st.success(f"✅ Wystawiono wezwanie **{nr_wezwania}** na kwotę **{kwota_m} zł** dla pasażera: {pasażer_imie}!")
+                    
+                    # Wydruk / Podgląd dokumentu mandatu na ekranie terminala
+                    st.markdown(f"""
+                        <div class="mandat-box">
+                            <h3 style="color: #f97316; margin-top:0; text-align:center;">KOLEJE MAZOWIECKIE - SP Z O.O.</h3>
+                            <h4 style="text-align:center; margin-bottom: 15px;">ZAWIADOMIENIE - WEZWANIE DO ZAPŁATY NR {nr_wezwania}</h4>
+                            <p><b>Data wystawienia:</b> {teraz.strftime('%Y-%m-%d %H:%M')}</p>
+                            <p><b>Kontroler:</b> {st.session_state['user']} | <b>Pociąg:</b> {pociag_m}</p>
+                            <hr style="border-color: #334155;">
+                            <p><b>Dane dłużnika:</b> {pasażer_imie}</p>
+                            <p><b>Dokument / PESEL:</b> {pasażer_dok}</p>
+                            <p><b>Adres:</b> {pasażer_adres}</p>
+                            <p><b>Tytuł zobowiązania:</b> {powod_wystawienia}</p>
+                            <h3 style="color: #ef4444; text-align:center; margin: 15px 0;">DO ZAPŁATY: {kwota_m:.2f} PLN</h3>
+                            <p style="font-size: 11px; color: #94a3b8; text-align:center; margin-bottom:0;">Należność należy uiścić w ciągu 14 dni od daty wystawienia na wskazany rachunek bankowy KM lub u konduktora.</p>
+                        </div>
+                    """, unsafe_allow_html=True)
                 else:
-                    st.error("Podaj dane pasażera.")
+                    st.error("Wypełnij przynajmniej imię i nazwisko oraz numer dokumentu pasażera.")
 
     elif pod_menu == "💳 Opłać mandat / Kara":
         st.write("### Terminal płatniczy - Opłacanie bieżących kar i mandatów")
-        df_nieopl = pd.read_sql("SELECT id, data_kontroli as [Data], linia as [Pociąg], komentarz as [Szczegóły], kara as [Kwota (zł)] FROM historia_kontroli WHERE kara > 0 AND status_oplaty = 'Nieopłacony' ORDER BY id DESC", conn)
+        df_nieopl = pd.read_sql("SELECT id, data_kontroli as [Data], linia as [Pociąg], kod_biletu as [Nr Wezwania], komentarz as [Szczegóły], kara as [Kwota (zł)] FROM historia_kontroli WHERE kara > 0 AND status_oplaty = 'Nieopłacony' ORDER BY id DESC", conn)
         
         if not df_nieopl.empty:
             st.dataframe(df_nieopl, use_container_width=True, hide_index=True)
             
             with st.form("form_oplaty"):
-                wybrane_id = st.selectbox("Wybierz ID mandatu do opłacenia:", df_nieopl["id"].tolist())
-                metoda_platnosci = st.radio("Wybierz formę płatności:", ["💳 Karta płatnicza (Pinpad)", "💵 Gotówka", "📱 BLIK"])
+                wybrane_id = st.selectbox("Wybierz ID pozycji z tabeli do opłacenia:", df_nieopl["id"].tolist())
+                metoda_platnosci = st.radio("Wybierz formę płatności u konduktora:", ["💳 Karta płatnicza (Pinpad)", "💵 Gotówka", "📱 BLIK"])
                 
                 if st.form_submit_button("Zatwierdź płatność i wydrukuj potwierdzenie", type="primary"):
                     c.execute("UPDATE historia_kontroli SET status_oplaty = 'Opłacony' WHERE id = ?", (wybrane_id,))
                     conn.commit()
-                    st.success(f"Płatność dla mandatu ID {wybrane_id} została pomyślnie przetworzona przez ({metoda_platnosci}). Status zmieniono na **Opłacony**!")
+                    st.success(f"Płatność dla pozycji ID {wybrane_id} została pomyślnie przetworzona przez ({metoda_platnosci}). Status zmieniono na **Opłacony**!")
                     st.rerun()
         else:
-            st.info("Brak nieopłaconych mandatów w systemie.")
+            st.info("Brak nieopłaconych mandatów / wezwań w systemie.")
 
 # ================= 2. ZADANIA =================
 elif wybrane_menu == "📋 Zadania":
@@ -372,14 +411,14 @@ elif wybrane_menu == "📋 Zadania":
     st.info("• Harmonogram zmiany: 06:00 - 14:00\n• Obieg pociągu: KM-121\n• Status terminala: Zsynchronizowany z serwerem centralnym KM")
 
 # ================= 3. INFORMACJE =================
-elif wybrane_menu == "ℹ️️ Informacje":
+elif wybrane_menu == "ℹ️ Informacje":
     st.subheader("Komunikaty i Taryfikator")
     st.write("1. Aktualny cennik opłat dodatkowych obowiązuje od 1 stycznia.\n2. W pociągach pospiesznych wymagana rezerwacja miejsc w rowerach.\n3. W razie awarii czytnika skorzystaj z wpisania ręcznego.")
 
 # ================= 4. RAPORTY =================
 elif wybrane_menu == "📊 Raporty":
     st.subheader("Raport z przeprowadzonych kontroli i mandatów")
-    df_rap = pd.read_sql("SELECT data_kontroli as [Data], linia as [Pociąg], kontroler as [Konduktor], kod_biletu as [Kod], wynik as [Wynik], kara as [Kara (zł)], status_oplaty as [Status Opłaty] FROM historia_kontroli ORDER BY id DESC", conn)
+    df_rap = pd.read_sql("SELECT data_kontroli as [Data], linia as [Pociąg], kontroler as [Konduktor], kod_biletu as [Kod/Wezwanie], wynik as [Wynik], kara as [Kara (zł)], status_oplaty as [Status Opłaty] FROM historia_kontroli ORDER BY id DESC", conn)
     if not df_rap.empty:
         st.dataframe(df_rap, use_container_width=True, hide_index=True)
         suma_kar_c = df_rap["Kara (zł)"].sum()
