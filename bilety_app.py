@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 # Układ szeroki
 st.set_page_config(page_title="Terminal / Kiosk KM", layout="wide")
 
-# Zaawansowana stylizacja CSS (kafelki biletomatu)
+# Zaawansowana stylizacja CSS
 st.markdown("""
     <style>
     .stApp {
@@ -121,7 +121,7 @@ try:
 except sqlite3.OperationalError:
     pass
 
-# Automatyczne dodanie kont domyślnych (w tym kiosku, jeśli go brakuje)
+# Automatyczne dodanie kont domyślnych
 domyslne_konta = [
     ("konduktor", "123", "Kontroler", "Jan Konduktor (ID: 104)"),
     ("admin", "admin123", "Administrator", "Kierownik Pociągu"),
@@ -139,7 +139,11 @@ if "user" not in st.session_state:
 if "rola" not in st.session_state:
     st.session_state["rola"] = ""
 
-# Stany dla kiosku (wybór biletu i krok płatności)
+# Stan blokady kiosku w pamięci globalnej aplikacji
+if "kiosk_zablokowany" not in st.session_state:
+    st.session_state["kiosk_zablokowany"] = False
+
+# Stany dla kiosku
 if "kiosk_krok" not in st.session_state:
     st.session_state["kiosk_krok"] = "wybor"
 if "kiosk_wybrany_bilet" not in st.session_state:
@@ -175,21 +179,33 @@ if not st.session_state["zalogowany"]:
             
             btn_zaloguj = st.form_submit_button("Uruchom terminal")
             if btn_zaloguj:
-                c.execute("SELECT rola, imie FROM uzytkownicy WHERE login = ? AND haslo = ?", (l_in.strip(), h_in))
-                res = c.fetchone()
-                if res:
-                    st.session_state["zalogowany"] = True
-                    st.session_state["rola"] = res[0]
-                    st.session_state["user"] = res[1]
-                    st.session_state["kiosk_krok"] = "wybor" # reset kroków kiosku przy logowaniu
-                    st.rerun()
+                # Sprawdzenie blokady kiosku przy próbie logowania jako kiosk
+                if l_in.strip() == "kiosk" and st.session_state["kiosk_zablokowany"]:
+                    st.error("🚫 Ten kiosk/kasownik został zablokowany przez kontrolera/administratora! Skontaktuj się z obsługą pociągu.")
                 else:
-                    st.error("Błędny login lub PIN.")
+                    c.execute("SELECT rola, imie FROM uzytkownicy WHERE login = ? AND haslo = ?", (l_in.strip(), h_in))
+                    res = c.fetchone()
+                    if res:
+                        st.session_state["zalogowany"] = True
+                        st.session_state["rola"] = res[0]
+                        st.session_state["user"] = res[1]
+                        st.session_state["kiosk_krok"] = "wybor"
+                        st.rerun()
+                    else:
+                        st.error("Błędny login lub PIN.")
     st.stop()
 
 
 # ================= SPECJALNY TRYB: KIOSK (2 RZĘDY PO 3 KAFELKI) =================
 if st.session_state["rola"] == "Kiosk":
+    # Podwójne zabezpieczenie przed wejściem, gdy w międzyczasie zablokowano kasownik
+    if st.session_state["kiosk_zablokowany"]:
+        st.error("🚫 Kiosk został zablokowany w trakcie pracy przez obsługę pociągu.")
+        if st.button("Wróć do ekranu logowania"):
+            st.session_state["zalogowany"] = False
+            st.rerun()
+        st.stop()
+
     st.markdown("""
         <div style="text-align: center; background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); padding: 15px; border-radius: 10px; border-bottom: 4px solid #f97316; margin-bottom: 20px;">
             <h1 style="color: #f97316; margin:0;">🚊 AUTOMAT BILETOWY KOLEI MAZOWIECKICH</h1>
@@ -197,7 +213,6 @@ if st.session_state["rola"] == "Kiosk":
         </div>
     """, unsafe_allow_html=True)
 
-    # Definicja 6 biletów (2 rzędy po 3 pozycje)
     katalog_biletow = [
         {"nazwa": "Bilet jednorazowy normalny", "cena": 15.50, "opis": "Ważny 3 h od skasowania"},
         {"nazwa": "Bilet jednorazowy ulgowy (50%)", "cena": 7.75, "opis": "Wymagany dokument uprawniający"},
@@ -207,11 +222,9 @@ if st.session_state["rola"] == "Kiosk":
         {"nazwa": "Bilet aglomeracyjny", "cena": 12.00, "opis": "Warszawa + otaczające gminy"}
     ]
 
-    # KROK 1: WYBÓR BILETU (2 RZĘDY PO 3 KOLUMNY)
     if st.session_state["kiosk_krok"] == "wybor":
         st.write("### Krok 1 z 2: Wybierz rodzaj biletu")
         
-        # Podział na 2 rzędy po 3 kolumny
         rząd_1 = katalog_biletow[0:3]
         rząd_2 = katalog_biletow[3:6]
 
@@ -220,7 +233,6 @@ if st.session_state["rola"] == "Kiosk":
             st.session_state["kiosk_cena"] = cena
             st.session_state["kiosk_krok"] = "platnosc"
 
-        # Pierwszy rząd
         cols1 = st.columns(3)
         for idx, bilet in enumerate(rząd_1):
             with cols1[idx]:
@@ -235,7 +247,6 @@ if st.session_state["rola"] == "Kiosk":
                     wybierz_bilet(bilet['nazwa'], bilet['cena'])
                     st.rerun()
 
-        # Drugi rząd
         cols2 = st.columns(3)
         for idx, bilet in enumerate(rząd_2):
             with cols2[idx]:
@@ -250,7 +261,6 @@ if st.session_state["rola"] == "Kiosk":
                     wybierz_bilet(bilet['nazwa'], bilet['cena'])
                     st.rerun()
 
-    # KROK 2: PŁATNOŚĆ I WYDANIE BILETU
     elif st.session_state["kiosk_krok"] == "platnosc":
         st.write("### Krok 2 z 2: Płatność i wydanie biletu")
         
@@ -300,13 +310,11 @@ if st.session_state["rola"] == "Kiosk":
                         </div>
                     """, unsafe_allow_html=True)
                     
-                    # Przycisk resetu do ekranu głównego kiosku
                     if st.button("Kup kolejny bilet"):
                         st.session_state["kiosk_krok"] = "wybor"
                         st.rerun()
 
     st.markdown("---")
-    # Panel serwisowy kiosku (zabezpieczony PIN-em)
     with st.expander("🛠️ Panel serwisowy / Wyjdź z trybu kiosku (Wymaga PIN)"):
         pin_wyjscie = st.text_input("Podaj kod PIN serwisowy:", type="password")
         if st.button("Wyloguj kiosk"):
@@ -318,7 +326,7 @@ if st.session_state["rola"] == "Kiosk":
             else:
                 st.error("Błędny PIN serwisowy!")
 
-    st.stop() # Blokuje resztę kodu dla roli Kiosk
+    st.stop()
 
 
 # ================= MENU BOCZNE DLA KONDUKTORA / ADMINA =================
@@ -374,7 +382,7 @@ if wybrane_menu == "🎫 Bilety":
         with c_pociag:
             pociag_info = st.selectbox("Relacja / Pociąg:", ["KM 12105 (Warszawa W-wa -> Radom)", "KM 21230 (Warszawa Włochy -> Siedlce)", "KM 31402 (Modlin -> Warszawa Centralna)"])
         with c_mandat:
-            stawka_kary = st.number_input("Opłata dodatkowa (Mandat) w zł:", value=250.0, step=10.0)
+            stawka_kary = st.number_input("Opłata dodatková (Mandat) w zł:", value=250.0, step=10.0)
 
         c1, c2, c3 = st.columns(3)
         with c1:
@@ -494,15 +502,17 @@ if wybrane_menu == "🎫 Bilety":
         else:
             st.info("Brak nieopłaconych mandatów.")
 
-# Pozostałe zakładki dla konduktora / admina
+# 2. ZADANIA
 elif wybrane_menu == "📋 Zadania":
     st.subheader("Zadania i harmonogram")
     st.info("• Zmiana: 06:00 - 14:00\n• Obieg: KM-121")
 
+# 3. INFORMACJE
 elif wybrane_menu == "ℹ️ Informacje":
     st.subheader("Komunikaty")
     st.write("Aktualny cennik opłat dodatkowych obowiązkowy w pociągach KM.")
 
+# 4. RAPORTY
 elif wybrane_menu == "📊 Raporty":
     st.subheader("Raport z kontroli")
     df_rap = pd.read_sql("SELECT data_kontroli as [Data], linia as [Pociąg], kontroler as [Konduktor], kod_biletu as [Kod/Wezwanie], wynik as [Wynik], kara as [Kara (zł)], status_oplaty as [Status] FROM historia_kontroli ORDER BY id DESC", conn)
@@ -510,17 +520,40 @@ elif wybrane_menu == "📊 Raporty":
         st.dataframe(df_rap, use_container_width=True, hide_index=True)
         st.metric("Suma kar", f"{df_rap['Kara (zł)'].sum()} zł")
 
+# 5. NARZĘDZIA (Z DODANĄ OPCJĄ BLOKADY KASOWNIKA/KIOSKU)
 elif wybrane_menu == "🔧 Narzędzia":
-    st.subheader("Narzędzia serwisu")
-    if st.button("🔄 Synchronizuj bazę"):
-        st.success("Zsynchronizowano.")
+    st.subheader("🛠️ Narzędzia serwisowe i kontrola urządzeń")
+    
+    st.write("### Zarządzanie stacjonarnym kasownikiem / kioskiem")
+    stan_akt = "🔴 ZABLOKOWANY" if st.session_state["kiosk_zablokowany"] else "🟢 AKTYWNY (Dostępny dla pasażerów)"
+    st.info(Aktualny status kasownika w pociągu: **{stan_akt}**)
 
+    c_abl, c_odbl = st.columns(2)
+    with c_abl:
+        if not st.session_state["kiosk_zablokowany"]:
+            if st.button("🔒 Zablokuj kasownik / kiosk"):
+                st.session_state["kiosk_zablokowany"] = True
+                st.success("Kasownik został zablokowany! Pasażerowie nie mogą kupować biletów.")
+                st.rerun()
+    with c_odbl:
+        if st.session_state["kiosk_zablokowany"]:
+            if st.button("🔓 Odblokuj kasownik / kiosk"):
+                st.session_state["kiosk_zablokowany"] = False
+                st.success("Kasownik został odblokowany i działa poprawnie.")
+                st.rerun()
+
+    st.markdown("---")
+    if st.button("🔄 Synchronizuj bazę danych z dyspozytornią"):
+        st.success("Zsynchronizowano pomyślnie.")
+
+# 6. UŻYTKOWNICY (ADMIN)
 elif wybrane_menu == "👥 Użytkownicy" and st.session_state["rola"] == "Administrator":
     st.subheader("Zarządzanie kontami")
     df_users = pd.read_sql("SELECT id as [ID], login as [Login], rola as [Rola], imie as [Opis] FROM uzytkownicy", conn)
     st.dataframe(df_users, use_container_width=True, hide_index=True)
 
-elif wybrane_menu == "🎟️ Baza Biletów (Admin)" and st.session_state["rola"] == "Administrator":
+# 7. BAZA BILETÓW (ADMIN)
+elif wybrane_menu == "🎟️️ Baza Biletów (Admin)" and st.session_state["rola"] == "Administrator":
     st.subheader("Zarządzanie biletami")
     df_bilety_db = pd.read_sql("SELECT id as [ID], kod_biletu as [Kod], rodzaj as [Oferta], data_waznosci as [Ważny do], status as [Status] FROM bilety ORDER BY id DESC", conn)
     st.dataframe(df_bilety_db, use_container_width=True, hide_index=True)
