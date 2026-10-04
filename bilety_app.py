@@ -179,7 +179,6 @@ if not st.session_state["zalogowany"]:
             
             btn_zaloguj = st.form_submit_button("Uruchom terminal")
             if btn_zaloguj:
-                # Sprawdzenie blokady kiosku przy próbie logowania jako kiosk
                 if l_in.strip() == "kiosk" and st.session_state["kiosk_zablokowany"]:
                     st.error("🚫 Ten kiosk/kasownik został zablokowany przez kontrolera/administratora! Skontaktuj się z obsługą pociągu.")
                 else:
@@ -198,7 +197,6 @@ if not st.session_state["zalogowany"]:
 
 # ================= SPECJALNY TRYB: KIOSK (2 RZĘDY PO 3 KAFELKI) =================
 if st.session_state["rola"] == "Kiosk":
-    # Podwójne zabezpieczenie przed wejściem, gdy w międzyczasie zablokowano kasownik
     if st.session_state["kiosk_zablokowany"]:
         st.error("🚫 Kiosk został zablokowany w trakcie pracy przez obsługę pociągu.")
         if st.button("Wróć do ekranu logowania"):
@@ -342,7 +340,7 @@ with st.sidebar:
     st.markdown(f"**Rola:** `{st.session_state['rola']}`")
     st.markdown("---")
     
-    opcje_menu = ["🎫 Bilety", "📋 Zadania", "ℹ️ Informacje", "📊 Raporty", "🔧 Narzędzia"]
+    opcje_menu = ["🎫 Bilety", "📋 Zadania", "ℹ️️ Informacje", "📊 Raporty", "🔧 Narzędzia"]
     if st.session_state["rola"] == "Administrator":
         opcje_menu.append("👥 Użytkownicy")
         opcje_menu.append("🎟️ Baza Biletów (Admin)")
@@ -382,7 +380,7 @@ if wybrane_menu == "🎫 Bilety":
         with c_pociag:
             pociag_info = st.selectbox("Relacja / Pociąg:", ["KM 12105 (Warszawa W-wa -> Radom)", "KM 21230 (Warszawa Włochy -> Siedlce)", "KM 31402 (Modlin -> Warszawa Centralna)"])
         with c_mandat:
-            stawka_kary = st.number_input("Opłata dodatková (Mandat) w zł:", value=250.0, step=10.0)
+            stawka_kary = st.number_input("Opłata dodatkowa (Mandat) w zł:", value=250.0, step=10.0)
 
         c1, c2, c3 = st.columns(3)
         with c1:
@@ -520,13 +518,13 @@ elif wybrane_menu == "📊 Raporty":
         st.dataframe(df_rap, use_container_width=True, hide_index=True)
         st.metric("Suma kar", f"{df_rap['Kara (zł)'].sum()} zł")
 
-# 5. NARZĘDZIA (Z DODANĄ OPCJĄ BLOKADY KASOWNIKA/KIOSKU)
+# 5. NARZĘDZIA
 elif wybrane_menu == "🔧 Narzędzia":
     st.subheader("🛠️ Narzędzia serwisowe i kontrola urządzeń")
     
     st.write("### Zarządzanie stacjonarnym kasownikiem / kioskiem")
     stan_akt = "🔴 ZABLOKOWANY" if st.session_state["kiosk_zablokowany"] else "🟢 AKTYWNY (Dostępny dla pasażerów)"
-    st.info(Aktualny status kasownika w pociągu: **{stan_akt}**)
+    st.info(f"Aktualny status kasownika w pociągu: {stan_akt}")
 
     c_abl, c_odbl = st.columns(2)
     with c_abl:
@@ -553,7 +551,7 @@ elif wybrane_menu == "👥 Użytkownicy" and st.session_state["rola"] == "Admini
     st.dataframe(df_users, use_container_width=True, hide_index=True)
 
 # 7. BAZA BILETÓW (ADMIN)
-elif wybrane_menu == "🎟️️ Baza Biletów (Admin)" and st.session_state["rola"] == "Administrator":
+elif wybrane_menu == "🎟️ Baza Biletów (Admin)" and st.session_state["rola"] == "Administrator":
     st.subheader("Zarządzanie biletami")
     df_bilety_db = pd.read_sql("SELECT id as [ID], kod_biletu as [Kod], rodzaj as [Oferta], data_waznosci as [Ważny do], status as [Status] FROM bilety ORDER BY id DESC", conn)
     st.dataframe(df_bilety_db, use_container_width=True, hide_index=True)
