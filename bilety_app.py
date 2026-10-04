@@ -209,7 +209,7 @@ with st.sidebar:
     st.markdown(f"**Rola:** `{st.session_state['rola']}`")
     st.markdown("---")
     
-    opcje_menu = ["🎫 Bilety", "📋 Zadania", "ℹ️ Informacje", "📊 Raporty", "🔧 Narzędzia"]
+    opcje_menu = ["🎫 Bilety", "🛒 Kiosk biletowy (Zakup)", "📋 Zadania", "ℹ️ Informacje", "📊 Raporty", "🔧 Narzędzia"]
     if st.session_state["rola"] == "Administrator":
         opcje_menu.append("👥 Użytkownicy")
         opcje_menu.append("🎟️ Baza Biletów (Admin)")
@@ -239,7 +239,7 @@ st.markdown(f"""
 if wybrane_menu == "🎫 Bilety":
     pod_menu = st.selectbox("Wybierz operację biletową:", [
         "🔍 Kontrola (Skaner kodów)", 
-        "➕ Nowy bilet (Sprzedaż)", 
+        "➕ Nowy bilet (Sprzedaż u konduktora)", 
         "⚠ Nowe wezwanie (Mandat za brak biletu)", 
         "💳 Opłać mandat / Kara"
     ])
@@ -314,7 +314,7 @@ if wybrane_menu == "🎫 Bilety":
             else:
                 st.warning("Wpisz lub zeskanuj kod biletu.")
 
-    elif pod_menu == "➕ Nowy bilet (Sprzedaż)":
+    elif pod_menu == "➕ Nowy bilet (Sprzedaż u konduktora)":
         with st.form("form_sprzedaz"):
             st.write("### Wystawienie biletu w pociągu")
             trasa = st.text_input("Relacja (np. Warszawa Wsch. -> Pruszków):")
@@ -332,7 +332,7 @@ if wybrane_menu == "🎫 Bilety":
                     st.error("Podaj relację podróży.")
 
     elif pod_menu == "⚠ Nowe wezwanie (Mandat za brak biletu)":
-        st.write("### 🚨 Wystawianie wezwania do zapłaty (Opłata dodatková)")
+        st.write("### 🚨 Wystawianie wezwania do zapłaty (Opłata dodatkowa)")
         st.info("Uzupełnij dane pasażera, który podróżuje bez ważnego biletu lub dokumentu poświadczającego uprawnienia do ulgi.")
 
         with st.form("form_mandat_oficjalny"):
@@ -399,17 +399,66 @@ if wybrane_menu == "🎫 Bilety":
         else:
             st.info("Brak nieopłaconych mandatów / wezwań w systemie.")
 
-# ================= 2. ZADANIA =================
+# ================= 2. KIOSK BILETOWY (NOWA OPCJA) =================
+elif wybrane_menu == "🛒 Kiosk biletowy (Zakup)":
+    st.subheader("🛒 Samoobsługowy Kiosk Biletowy Kolei Mazowieckich")
+    st.info("Kup bilet samodzielnie online lub w stacjonarnym automacie biletowym. Po opłaceniu bilet zostanie natychmiast zapisany w centralnej bazie systemu do kontroli.")
+
+    with st.form("form_kiosk_zakup"):
+        st.write("### Konfiguracja biletu podróżnego")
+        kiosk_relacja = st.text_input("Relacja podróży (np. Warszawa Centralna -> Radom):")
+        kiosk_rodzaj = st.selectbox("Wybierz rodzaj biletu:", [
+            "Bilet jednorazowy normalny",
+            "Bilet jednorazowy ulgowy (50%)",
+            "Bilet miesięczny imienny",
+            "Bilet sieciowy dobowy",
+            "Bilet weekendowy KM"
+        ])
+        kiosk_cena = st.number_input("Cena biletu (zł):", value=22.00, step=1.0)
+        kiosk_platnosci = st.radio("Wybierz metodę płatności w kiosku:", ["💳 Karta płatnicza", "📱 BLIK", "💵 Gotówka (Banknoty/Monety)"])
+
+        btn_kup_kiosk = st.form_submit_button("💳 Opłać i pobierz bilet", type="primary")
+
+        if btn_kup_kiosk:
+            if kiosk_relacja.strip():
+                # Generowanie unikalnego kodu dla kiosku
+                kod_kiosku = f"KM-KIOSK-{datetime.now().strftime('%H%M%S')}"
+                waznosc_kiosku = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d %H:%M")
+                
+                # Zapis do głównej tabeli biletów
+                c.execute("INSERT INTO bilety (kod_biletu, rodzaj, data_waznosci, status) VALUES (?, ?, ?, ?)",
+                          (kod_kiosku, f"{kiosk_rodzaj} ({kiosk_relacja})", waznosc_kiosku, "Aktywny"))
+                conn.commit()
+
+                st.success(f"🎉 Płatność przez **{kiosk_platnosci}** zakończona sukcesem! Twój bilet został wygenerowany.")
+                
+                # Wyświetlenie wygenerowanego biletu z kodem w ładnym boksie
+                st.markdown(f"""
+                    <div class="mandat-box" style="border-color: #22c55e;">
+                        <h3 style="color: #22c55e; margin-top:0; text-align:center;">KOLEJE MAZOWIECKIE - BILET ELEKTRONICZNY</h3>
+                        <h4 style="text-align:center; margin-bottom: 15px;">KOD BILETU: {kod_kiosku}</h4>
+                        <p><b>Relacja:</b> {kiosk_relacja}</p>
+                        <p><b>Rodzaj oferty:</b> {kiosk_rodzaj}</p>
+                        <p><b>Ważny do:</b> {waznosc_kiosku}</p>
+                        <p><b>Kwota zapłacona:</b> {kiosk_cena:.2f} PLN ({kiosk_platnosci})</p>
+                        <hr style="border-color: #334155;">
+                        <p style="font-size: 11px; color: #94a3b8; text-align:center; margin-bottom:0;">Zapisz powyższy kod lub zeskanuj go u konduktora podczas kontroli w pociągu.</p>
+                    </div>
+                """, unsafe_allow_html=True)
+            else:
+                st.error("Proszę wpisać relację podróży.")
+
+# ================= 3. ZADANIA =================
 elif wybrane_menu == "📋 Zadania":
     st.subheader("Zadania i harmonogram pracy")
     st.info("• Harmonogram zmiany: 06:00 - 14:00\n• Obieg pociągu: KM-121\n• Status terminala: Zsynchronizowany z serwerem centralnym KM")
 
-# ================= 3. INFORMACJE =================
-elif wybrane_menu == "ℹ️ Informacje":
+# ================= 4. INFORMACJE =================
+elif wybrane_menu == "ℹ️️ Informacje":
     st.subheader("Komunikaty i Taryfikator")
     st.write("1. Aktualny cennik opłat dodatkowych obowiązuje od 1 stycznia.\n2. W pociągach pospiesznych wymagana rezerwacja miejsc w rowerach.\n3. W razie awarii czytnika skorzystaj z wpisania ręcznego.")
 
-# ================= 4. RAPORTY =================
+# ================= 5. RAPORTY =================
 elif wybrane_menu == "📊 Raporty":
     st.subheader("Raport z przeprowadzonych kontroli i mandatów")
     df_rap = pd.read_sql("SELECT data_kontroli as [Data], linia as [Pociąg], kontroler as [Konduktor], kod_biletu as [Kod/Wezwanie], wynik as [Wynik], kara as [Kara (zł)], status_oplaty as [Status Opłaty] FROM historia_kontroli ORDER BY id DESC", conn)
@@ -423,7 +472,7 @@ elif wybrane_menu == "📊 Raporty":
     else:
         st.info("Brak wpisów w historii kontroli na tej zmianie.")
 
-# ================= 5. NARZĘDZIA =================
+# ================= 6. NARZĘDZIA =================
 elif wybrane_menu == "🔧 Narzędzia":
     st.subheader("Narzędzia serwisowe terminala")
     if st.button("🔄 Synchronizuj bazę danych z dyspozytornią"):
@@ -431,7 +480,7 @@ elif wybrane_menu == "🔧 Narzędzia":
     if st.button("🖨️ Test drukarki termicznej"):
         st.toast("Wydruk testowy powiódł się!", icon="🖨️")
 
-# ================= 6. UŻYTKOWNICY (TYLKO ADMIN) =================
+# ================= 7. UŻYTKOWNICY (TYLKO ADMIN) =================
 elif wybrane_menu == "👥 Użytkownicy" and st.session_state["rola"] == "Administrator":
     st.subheader("👥 Zarządzanie użytkownikami systemowymi")
     
@@ -482,7 +531,7 @@ elif wybrane_menu == "👥 Użytkownicy" and st.session_state["rola"] == "Admini
             else:
                 st.info("Brak użytkowników w bazie.")
 
-# ================= 7. BAZA BILETÓW (TYLKO ADMIN / KIEROWNIK) =================
+# ================= 8. BAZA BILETÓW (TYLKO ADMIN / KIEROWNIK) =================
 elif wybrane_menu == "🎟️ Baza Biletów (Admin)" and st.session_state["rola"] == "Administrator":
     st.subheader("🎟️ Zarządzanie pulą biletów w systemie centralnym")
     
@@ -496,7 +545,6 @@ elif wybrane_menu == "🎟️ Baza Biletów (Admin)" and st.session_state["rola"
         with st.form("form_dodaj_bilet_admin"):
             st.write("### Dodawanie nowego biletu do systemu")
             
-            # Własny kod biletu wpisywany ręcznie/ze skanera
             kod_b_input = st.text_input("Kod biletu (wpisz lub wklej dokładny kod/numer):", placeholder="np. 4355 lub KM-2026-XYZ")
             rodzaj_b_input = st.selectbox("Rodzaj / Oferta biletu:", [
                 "Bilet jednorazowy normalny",
