@@ -113,20 +113,40 @@ c.execute("""
     )
 """)
 
-# Tabela na ustawienia globalne (np. blokada kiosku)
 c.execute("""
     CREATE TABLE IF NOT EXISTS ustawienia (
         klucz TEXT PRIMARY KEY,
         wartosc TEXT
     )
 """)
+
+# Tabela cennika biletów w kiosku
+c.execute("""
+    CREATE TABLE IF NOT EXISTS cennik (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        nazwa TEXT UNIQUE,
+        cena REAL,
+        opis TEXT
+    )
+""")
 conn.commit()
 
-# Ustawienie domyślne dla blokady, jeśli nie istnieje
+# Domyślne ustawienia i cennik
 c.execute("INSERT OR IGNORE INTO ustawienia (klucz, wartosc) VALUES ('kiosk_zablokowany', 'False')")
 conn.commit()
 
-# Funkcje pomocnicze do odczytu/zapisu stanu blokady z bazy danych
+domyslny_cennik = [
+    ("Bilet jednorazowy normalny", 15.50, "Ważny 3 h od skasowania"),
+    ("Bilet jednorazowy ulgowy (50%)", 7.75, "Wymagany dokument uprawniający"),
+    ("Bilet sieciowy dobowy", 45.00, "Nieograniczone przejazdy przez 24h"),
+    ("Bilet weekendowy KM", 39.00, "Od piątku od 19:00 do poniedziałku do 06:00"),
+    ("Bilet strefowy miejski", 6.80, "Warszawa i strefa miejska"),
+    ("Bilet aglomeracyjny", 12.00, "Warszawa + otaczające gminy")
+]
+for nazwa, cena, opis in domyslny_cennik:
+    c.execute("INSERT OR IGNORE INTO cennik (nazwa, cena, opis) VALUES (?, ?, ?)", (nazwa, cena, opis))
+conn.commit()
+
 def czy_kiosk_zablokowany():
     c.execute("SELECT wartosc FROM ustawienia WHERE klucz = 'kiosk_zablokowany'")
     res = c.fetchone()
@@ -136,14 +156,12 @@ def ustaw_blokade_kiosku(status: bool):
     c.execute("UPDATE ustawienia SET wartosc = ? WHERE klucz = 'kiosk_zablokowany'", (str(status),))
     conn.commit()
 
-# Bezpieczna aktualizacja tabeli dla opłat
 try:
     c.execute("ALTER TABLE historia_kontroli ADD COLUMN status_oplaty TEXT DEFAULT 'Nieopłacony'")
     conn.commit()
 except sqlite3.OperationalError:
     pass
 
-# Automatyczne dodanie kont domyślnych
 domyslne_konta = [
     ("konduktor", "123", "Kontroler", "Jan Konduktor (ID: 104)"),
     ("admin", "admin123", "Administrator", "Kierownik Pociągu"),
@@ -161,7 +179,6 @@ if "user" not in st.session_state:
 if "rola" not in st.session_state:
     st.session_state["rola"] = ""
 
-# Stany dla kiosku
 if "kiosk_krok" not in st.session_state:
     st.session_state["kiosk_krok"] = "wybor"
 if "kiosk_wybrany_bilet" not in st.session_state:
@@ -197,30 +214,47 @@ if not st.session_state["zalogowany"]:
             
             btn_zaloguj = st.form_submit_button("Uruchom terminal")
             if btn_zaloguj:
-                if l_in.strip() == "kiosk" and czy_kiosk_zablokowany():
-                    st.error("🚫 Ten kiosk/kasownik został zablokowany przez kontrolera/administratora! Skontaktuj się z obsługą pociągu.")
+                c.execute("SELECT rola, imie FROM uzytkownicy WHERE login = ? AND haslo = ?", (l_in.strip(), h_in))
+                res = c.fetchone()
+                if res:
+                    st.session_state["zalogowany"] = True
+                    st.session_state["rola"] = res[0]
+                    st.session_state["user"] = res[1]
+                    st.session_state["kiosk_krok"] = "wybor"
+                    st.rerun()
                 else:
-                    c.execute("SELECT rola, imie FROM uzytkownicy WHERE login = ? AND haslo = ?", (l_in.strip(), h_in))
-                    res = c.fetchone()
-                    if res:
-                        st.session_state["zalogowany"] = True
-                        st.session_state["rola"] = res[0]
-                        st.session_state["user"] = res[1]
-                        st.session_state["kiosk_krok"] = "wybor"
-                        st.rerun()
-                    else:
-                        st.error("Błędny login lub PIN.")
+                    st.error("Błędny login lub PIN.")
     st.stop()
 
 
-# ================= SPECJALNY TRYB: KIOSK (2 RZĘDY PO 3 KAFELKI) =================
+# ================= SPECJALNY TRYB: KIOSK =================
 if st.session_state["rola"] == "Kiosk":
-    # Sprawdzamy stan blokady z bazy przy każdym odświeżeniu/interakcji w kiosku
+    # Ekran blokady w stylu terminala rtm (zamiast wyskakującego błędu)
     if czy_kiosk_zablokowany():
-        st.error("🚫 Kiosk został zablokowany w trakcie pracy przez obsługę pociągu. Sprzedaż biletów jest niemożliwa.")
-        if st.button("Wróć do ekranu logowania"):
-            st.session_state["zalogowany"] = False
-            st.rerun()
+        czas_teraz = datetime.now().strftime("%H:%M:%S | %d-%m-%Y")
+        st.markdown(f"""
+            <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 20px; background-color: #e2e8f0; border-bottom: 2px solid #cbd5e1; color: #0f172a; font-weight: bold;">
+                <div style="font-size: 22px; color: #dc2626;">🚊 KM RTM</div>
+                <div style="font-size: 18px;">{czas_teraz}</div>
+            </div>
+            <div style="text-align: center; padding: 60px 20px; background-color: #edf2f7; min-height: 75vh; display: flex; flex-direction: column; justify-content: center; align-items: center;">
+                <div style="font-size: 110px; color: #dc2626; margin-bottom: 20px; line-height: 1;">🚫</div>
+                <h1 style="color: #0f172a; font-size: 42px; font-weight: 800; letter-spacing: 2px; margin: 0;">KASOWNIK ZABLOKOWANY</h1>
+                <p style="color: #64748b; font-size: 16px; margin-top: 10px;">Urządzenie zostało zablokowane przez obsługę pociągu.</p>
+            </div>
+        """, unsafe_allow_html=True)
+        
+        st.markdown("<br>", unsafe_allow_html=True)
+        with st.expander("🛠️ Panel serwisowy (Wymaga PIN)"):
+            pin_wyjscie = st.text_input("Podaj kod PIN serwisowy:", type="password", key="pin_lock_screen")
+            if st.button("Wyloguj urządzenie"):
+                if pin_wyjscie == "123" or pin_wyjscie == "admin123":
+                    st.session_state["zalogowany"] = False
+                    st.session_state["user"] = ""
+                    st.session_state["rola"] = ""
+                    st.rerun()
+                else:
+                    st.error("Błędny PIN serwisowy!")
         st.stop()
 
     st.markdown("""
@@ -230,14 +264,9 @@ if st.session_state["rola"] == "Kiosk":
         </div>
     """, unsafe_allow_html=True)
 
-    katalog_biletow = [
-        {"nazwa": "Bilet jednorazowy normalny", "cena": 15.50, "opis": "Ważny 3 h od skasowania"},
-        {"nazwa": "Bilet jednorazowy ulgowy (50%)", "cena": 7.75, "opis": "Wymagany dokument uprawniający"},
-        {"nazwa": "Bilet sieciowy dobowy", "cena": 45.00, "opis": "Nieograniczone przejazdy przez 24h"},
-        {"nazwa": "Bilet weekendowy KM", "cena": 39.00, "opis": "Od piątku od 19:00 do poniedziałku do 06:00"},
-        {"nazwa": "Bilet strefowy miejski", "cena": 6.80, "opis": "Warszawa i strefa miejska"},
-        {"nazwa": "Bilet aglomeracyjny", "cena": 12.00, "opis": "Warszawa + otaczające gminy"}
-    ]
+    # Pobieranie aktualnego cennika z bazy danych
+    df_cennik = pd.read_sql("SELECT nazwa, cena, opis FROM cennik", conn)
+    katalog_biletow = df_cennik.to_dict('records')
 
     if st.session_state["kiosk_krok"] == "wybor":
         st.write("### Krok 1 z 2: Wybierz rodzaj biletu")
@@ -363,6 +392,7 @@ with st.sidebar:
     if st.session_state["rola"] == "Administrator":
         opcje_menu.append("👥 Użytkownicy")
         opcje_menu.append("🎟️ Baza Biletów (Admin)")
+        opcje_menu.append("💰 Ceny biletów (Admin)")
 
     wybrane_menu = st.radio(
         "Nawigacja:",
@@ -399,7 +429,7 @@ if wybrane_menu == "🎫 Bilety":
         with c_pociag:
             pociag_info = st.selectbox("Relacja / Pociąg:", ["KM 12105 (Warszawa W-wa -> Radom)", "KM 21230 (Warszawa Włochy -> Siedlce)", "KM 31402 (Modlin -> Warszawa Centralna)"])
         with c_mandat:
-            stawka_kary = st.number_input("Opłata dodatková (Mandat) w zł:", value=250.0, step=10.0)
+            stawka_kary = st.number_input("Opłata dodatkowa (Mandat) w zł:", value=250.0, step=10.0)
 
         c1, c2, c3 = st.columns(3)
         with c1:
@@ -445,7 +475,7 @@ if wybrane_menu == "🎫 Bilety":
                     if status_b == "Skasowany":
                         st.session_state["p_gapowiczow"] += 1
                         st.session_state["p_kary"] += stawka_kary
-                        st.warning(f"⚠️️ **BILET JUŻ WYKORZYSTANY!**\nRodzaj: {rodzaj}. Mandat: **{stawka_kary} zł**.")
+                        st.warning(f"⚠️ **BILET JUŻ WYKORZYSTANY!**\nRodzaj: {rodzaj}. Mandat: **{stawka_kary} zł**.")
                         c.execute("INSERT INTO historia_kontroli (kod_biletu, wynik, komentarz, data_kontroli, kontroler, linia, kara, status_oplaty) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                                   (kod_czysty, "Skasowany wcześniej", rodzaj, str(teraz), st.session_state["user"], pociag_info, stawka_kary, "Nieopłacony"))
                         conn.commit()
@@ -551,7 +581,7 @@ elif wybrane_menu == "🔧 Narzędzia":
         if not zablokowany:
             if st.button("🔒 Zablokuj kasownik / kiosk"):
                 ustaw_blokade_kiosku(True)
-                st.success("Kasownik został zablokowany w bazie! Pasażerowie nie mogą kupować biletów.")
+                st.success("Kasownik został zablokowany w bazie! Kiosk wyświetli ekran blokady.")
                 st.rerun()
     with c_odbl:
         if zablokowany:
@@ -575,3 +605,20 @@ elif wybrane_menu == "🎟️ Baza Biletów (Admin)" and st.session_state["rola"
     st.subheader("Zarządzanie biletami")
     df_bilety_db = pd.read_sql("SELECT id as [ID], kod_biletu as [Kod], rodzaj as [Oferta], data_waznosci as [Ważny do], status as [Status] FROM bilety ORDER BY id DESC", conn)
     st.dataframe(df_bilety_db, use_container_width=True, hide_index=True)
+
+# 8. CENY BILETÓW (ADMIN)
+elif wybrane_menu == "💰 Ceny biletów (Admin)" and st.session_state["rola"] == "Administrator":
+    st.subheader("Zarządzanie cenami biletów w kiosku")
+    df_cennik_adm = pd.read_sql("SELECT id, nazwa as [Nazwa biletu], cena as [Cena (zł)], opis as [Opis] FROM cennik", conn)
+    st.dataframe(df_cennik_adm, use_container_width=True, hide_index=True)
+    
+    with st.form("form_edycja_ceny"):
+        st.write("### Zmień cenę biletu")
+        bilet_do_edycji = st.selectbox("Wybierz bilet:", df_cennik_adm["Nazwa biletu"].tolist())
+        nowa_cena = st.number_input("Nowa cena (zł):", min_value=0.0, step=0.50, value=15.50)
+        
+        if st.form_submit_button("Aktualizuj cenę"):
+            c.execute("UPDATE cennik SET cena = ? WHERE nazwa = ?", (nowa_cena, bilet_do_edycji))
+            conn.commit()
+            st.success(f"Zaktualizowano cenę biletu '{bilet_do_edycji}' na {nowa_cena:.2f} zł.")
+            st.rerun()
